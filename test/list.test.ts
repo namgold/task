@@ -59,6 +59,7 @@ test('listTasks -- ad-hoc query without view filters tasks', async () => {
     const result = await listTasks(tasksDir, config, 'status == new');
     assert.match(result, /Match/);
     assert.doesNotMatch(result, /No match/);
+    assert.match(result, /\bnew\b/);
   });
 });
 

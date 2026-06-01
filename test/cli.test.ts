@@ -72,6 +72,7 @@ test('list and view render saved tables', { concurrency: false }, async () => {
     const listResult = await runCli(cwd, ['list']);
     assert.equal(listResult.status, 0, listResult.stderr);
     assert.match(listResult.stdout, /^id\s+status\s+priority\s+type\s+assignee\s+title/m);
+    assert.match(listResult.stdout, /pending_review/);
     assert.match(listResult.stdout, /Open task/);
 
     const viewResult = await runCli(cwd, ['view', 'Open Tasks']);
@@ -129,8 +130,8 @@ test('list -- parses quoted values, implicit AND, and parenthesized OR groups', 
     const result = await runCli(cwd, ['list', 'title == "Alpha task" (status == new || status == blocked)']);
     assert.equal(result.status, 0, result.stderr);
     assert.equal((result.stdout.match(/Alpha task/g) ?? []).length, 2);
-    assert.match(result.stdout, /\bNew\b/);
-    assert.match(result.stdout, /\bBlocked\b/);
+    assert.match(result.stdout, /\bnew\b/);
+    assert.match(result.stdout, /\bblocked\b/);
     assert.doesNotMatch(result.stdout, /Beta task/);
   });
 });
