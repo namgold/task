@@ -29,18 +29,22 @@ This registers `/task` as a custom slash command in Claude Code. Use it in any C
 
 ### Claude Code — MCP server (advanced)
 
-`ai/mcp/SPEC.md` defines a recommended MCP tool surface. No server is included in this repo, but if you implement one (wrapping the `task` CLI), register it in `.claude/settings.json`:
+`ai/mcp/server.js` implements the MCP tool surface defined in `ai/mcp/SPEC.md`. It is registered automatically via `.claude/settings.json` when you use this repo with Claude Code.
+
+If you need to register it manually in another project:
 
 ```json
 {
   "mcpServers": {
     "task": {
       "command": "node",
-      "args": ["/path/to/your/task-mcp-server.js"]
+      "args": ["/absolute/path/to/ai/mcp/server.js"]
     }
   }
 }
 ```
+
+The server requires either `dist/cli.js` (run `pnpm build` first) or `task` installed globally (`npm i -g .`).
 
 ### Codex
 

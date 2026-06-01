@@ -28,9 +28,11 @@ Expose the existing task workflow through structured tool calls instead of shell
 - `task.validate` returns validation issues for all task files.
 - view operations read or modify `.taskrc.yml`.
 
-## Implementation note
+## Implementation
 
-This spec is not implemented in this repository — it is a forward-looking contract for anyone who wants to build an MCP server wrapper around the `task` CLI.
+The server is implemented in `ai/mcp/server.js`. It shells out to the `task` CLI for each tool call, keeping behavior aligned with the CLI source of truth.
 
-Prefer reusing the existing CLI or shared modules so the MCP behavior stays aligned with the repository’s markdown-backed source of truth.
+Requires one of:
+- `dist/cli.js` to exist (run `pnpm build` first), or
+- `task` installed globally (`npm i -g .`)
 
