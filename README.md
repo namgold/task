@@ -162,9 +162,7 @@ cp -r ai/skill/ "$CODEX_HOME/skills/task/"
 
 ### MCP server (advanced)
 
-`ai/mcp/server.js` exposes the task CLI as MCP tools (`task.new`, `task.list`, `task.update`, etc.). It is registered automatically in `.claude/settings.json` for Claude Code users of this repo.
-
-Requires `dist/cli.js` (run `pnpm build` first) or `task` installed globally (`npm i -g .`).
+`ai/mcp/server.js` exposes the task CLI as MCP tools (`task.new`, `task.list`, `task.update`, etc.). See `ai/README.md` for installation instructions.
 
 ## Git workflow recommendation
 
