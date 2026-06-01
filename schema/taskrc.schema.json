@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/taskrc.schema.json",
+  "title": ".taskrc.yml",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "tasks_dir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fieldEntry"
+      }
+    },
+    "views": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/viewEntry"
+      }
+    }
+  },
+  "$defs": {
+    "fieldEntry": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "patternProperties": {
+            "^.+$": {
+              "$ref": "#/$defs/fieldSpec"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "fieldSpec": {
+      "oneOf": [
+        {
+          "const": "$ID"
+        },
+        {
+          "const": "$CREATED_AT"
+        },
+        {
+          "const": "$UPDATED_AT"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "options": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "default": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "anyOf": [
+            {
+              "required": ["options"]
+            },
+            {
+              "required": ["default"]
+            }
+          ]
+        }
+      ]
+    },
+    "viewEntry": {
+      "oneOf": [
+        {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/viewSpec"
+          }
+        }
+      ]
+    },
+    "viewSpec": {
+      "type": "object",
+      "required": ["filter"],
+      "additionalProperties": true,
+      "properties": {
+        "filter": {
+          "type": "string",
+          "minLength": 1
+        },
+        "columns": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          ]
+        },
+        "sort": {
+          "oneOf": [
+            {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "enum": ["ascending", "descending", "asc", "desc"]
+              }
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 1,
+                "additionalProperties": {
+                  "enum": ["ascending", "descending", "asc", "desc"]
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

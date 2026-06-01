@@ -1,0 +1,39 @@
+{
+  "name": "task",
+  "version": "0.1.0",
+  "description": "Git-native, markdown-based task management CLI",
+  "type": "module",
+  "packageManager": "pnpm@10.8.1",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "bin": {
+    "task": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "bundle:linux": "node scripts/build-linux-binary.mjs",
+    "bundle:macos-silicon": "node scripts/build-macos-silicon-binary.mjs",
+    "dev": "node --import tsx src/cli.ts",
+    "postinstall": "node ./dist/install-completions.js",
+    "prepare": "npm run build",
+    "prepack": "npm run build",
+    "test": "node --import tsx --test test/cli.test.ts test/completion.test.ts",
+    "validate": "node --import tsx src/cli.ts validate"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "fast-glob": "^3.3.3",
+    "gray-matter": "^4.0.3",
+    "yaml": "^2.8.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "esbuild": "^0.25.1",
+    "postject": "^1.0.0-alpha.6",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
