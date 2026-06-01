@@ -55,6 +55,126 @@ test('list and view render saved tables', { concurrency: false }, async () => {
   });
 });
 
+test('list -- parses quoted values, implicit AND, and parenthesized OR groups', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    await writeTask(cwd, {
+      id: 'TASK-0001',
+      title: 'Alpha task',
+      type: 'feature',
+      status: 'new',
+      priority: 'high',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: 'Quoted title match.',
+      tags: []
+    });
+    await writeTask(cwd, {
+      id: 'TASK-0002',
+      title: 'Alpha task',
+      type: 'feature',
+      status: 'blocked',
+      priority: 'critical',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: 'Quoted title match.',
+      tags: []
+    });
+    await writeTask(cwd, {
+      id: 'TASK-0003',
+      title: 'Beta task',
+      type: 'feature',
+      status: 'new',
+      priority: 'high',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: 'Unrelated task.',
+      tags: []
+    });
+
+    const result = await runCli(cwd, ['list', 'title == "Alpha task" (status == new || status == blocked)']);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal((result.stdout.match(/Alpha task/g) ?? []).length, 2);
+    assert.match(result.stdout, /\bnew\b/);
+    assert.match(result.stdout, /\bblocked\b/);
+    assert.doesNotMatch(result.stdout, /Beta task/);
+  });
+});
+
+test('list -- combines saved view filters with ad hoc queries', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    await runCli(cwd, [
+      'view',
+      'create',
+      'Active Work',
+      'status != done',
+      '--column',
+      'title',
+      '--column',
+      'priority',
+      '--column',
+      'status'
+    ]);
+
+    await writeTask(cwd, {
+      id: 'TASK-0001',
+      title: 'Open high',
+      type: 'feature',
+      status: 'new',
+      priority: 'high',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: 'Matches the ad hoc query.',
+      tags: []
+    });
+    await writeTask(cwd, {
+      id: 'TASK-0002',
+      title: 'Open low',
+      type: 'feature',
+      status: 'new',
+      priority: 'low',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: 'Should be filtered out by the query.',
+      tags: []
+    });
+    await writeTask(cwd, {
+      id: 'TASK-0003',
+      title: 'Closed high',
+      type: 'feature',
+      status: 'done',
+      priority: 'high',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: 'Should be filtered out by the view.',
+      tags: []
+    });
+
+    const result = await runCli(cwd, ['ls', '--view', 'Active Work', 'priority == high']);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Open high/);
+    assert.doesNotMatch(result.stdout, /Open low/);
+    assert.doesNotMatch(result.stdout, /Closed high/);
+  });
+});
+
 test('view create, ls, and rm manage saved views', { concurrency: false }, async () => {
   await withWorkspace(async (cwd) => {
     await writeTask(cwd, {
@@ -111,6 +231,97 @@ test('view create, ls, and rm manage saved views', { concurrency: false }, async
   });
 });
 
+test('view create, show, and rm handle multi-word names and complex filters', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    await writeTask(cwd, {
+      id: 'TASK-0001',
+      title: 'Critical high',
+      type: 'feature',
+      status: 'new',
+      priority: 'high',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: 'Should be included.',
+      tags: []
+    });
+    await writeTask(cwd, {
+      id: 'TASK-0002',
+      title: 'Critical critical',
+      type: 'feature',
+      status: 'new',
+      priority: 'critical',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: 'Should also be included.',
+      tags: []
+    });
+    await writeTask(cwd, {
+      id: 'TASK-0003',
+      title: 'Closed critical',
+      type: 'feature',
+      status: 'done',
+      priority: 'critical',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: 'Should be excluded by the filter.',
+      tags: []
+    });
+
+    const createResult = await runCli(cwd, [
+      'view',
+      'create',
+      'Critical Open',
+      '(status != done && (priority == high || priority == critical))',
+      '--column',
+      'title',
+      '--column',
+      'priority',
+      '--column',
+      'status',
+      '--sort',
+      'priority:desc',
+      '--sort',
+      'status:asc'
+    ]);
+
+    assert.equal(createResult.status, 0, createResult.stderr);
+    assert.match(createResult.stdout, /^Critical Open$/m);
+
+    const configAfterCreate = await readFile(path.join(cwd, '.taskrc.yml'), 'utf8');
+    assert.match(configAfterCreate, /status != done/);
+    assert.match(configAfterCreate, /priority == high/);
+    assert.match(configAfterCreate, /priority: descending/);
+    assert.match(configAfterCreate, /status: ascending/);
+
+    const viewResult = await runCli(cwd, ['view', 'Critical Open']);
+    assert.equal(viewResult.status, 0, viewResult.stderr);
+    assert.match(viewResult.stdout, /Critical high/);
+    assert.match(viewResult.stdout, /Critical critical/);
+    assert.doesNotMatch(viewResult.stdout, /Closed critical/);
+
+    const rmResult = await runCli(cwd, ['view', 'rm', 'Critical Open', '--yes']);
+    assert.equal(rmResult.status, 0, rmResult.stderr);
+    assert.match(rmResult.stdout, /^Critical Open$/m);
+  });
+});
+
+test('view create -- rejects malformed sort specifications', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    const result = await runCli(cwd, ['view', 'create', 'Bad Sort', 'status == new', '--sort', 'priority']);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Invalid sort spec/);
+  });
+});
+
 test('show, update, search, and validate work together', { concurrency: false }, async () => {
   await withWorkspace(async (cwd) => {
     const filePath = await writeTask(cwd, {
@@ -153,6 +364,67 @@ test('show, update, search, and validate work together', { concurrency: false },
   });
 });
 
+test('update -- handles multiple key=value arguments and tag lists', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    await writeTask(cwd, {
+      id: 'TASK-0001',
+      title: 'Update target',
+      type: 'feature',
+      status: 'new',
+      priority: 'medium',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: 'Original summary.',
+      tags: []
+    });
+
+    const result = await runCli(cwd, [
+      'update',
+      'TASK-0001',
+      'status=done',
+      'assignee=alice',
+      'summary=Updated summary',
+      'branch=feature/reconnect',
+      'tags=alpha,beta'
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+
+    const raw = await readFile(path.join(cwd, '.tasks', 'TASK-0001-update-target.md'), 'utf8');
+    assert.match(raw, /status: done/);
+    assert.match(raw, /assignee: alice/);
+    assert.match(raw, /summary: Updated summary/);
+    assert.match(raw, /branch: feature\/reconnect/);
+    assert.match(raw, /tags:\n  - alpha\n  - beta/);
+  });
+});
+
+test('update -- rejects malformed key value pairs', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    await writeTask(cwd, {
+      id: 'TASK-0001',
+      title: 'Bad update',
+      type: 'feature',
+      status: 'new',
+      priority: 'medium',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: 'Needs validation.',
+      tags: []
+    });
+
+    const result = await runCli(cwd, ['update', 'TASK-0001', 'status']);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Invalid argument: status/);
+  });
+});
+
 test('unknown view columns warn but still render the table', { concurrency: false }, async () => {
   await withWorkspace(async (cwd) => {
     await writeFile(
@@ -183,6 +455,67 @@ test('unknown view columns warn but still render the table', { concurrency: fals
     assert.match(result.stdout, /Warning: column "missing" does not exist in fields\./);
     assert.match(result.stdout, /title\s+missing/);
     assert.match(result.stdout, /Alpha/);
+  });
+});
+
+test('search -- matches multi-word queries across frontmatter and body', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    await writeTask(
+      cwd,
+      {
+        id: 'TASK-0001',
+        title: 'Summary match',
+        type: 'feature',
+        status: 'new',
+        priority: 'medium',
+        assignee: '',
+        description: '',
+        pr: '',
+        created_at: '2026-06-01',
+        updated_at: '2026-06-01',
+        summary: 'Alpha keyword lives in the summary.',
+        tags: []
+      },
+      '# Problem\n\nNo special body text here.'
+    );
+    await writeTask(
+      cwd,
+      {
+        id: 'TASK-0002',
+        title: 'Body match',
+        type: 'feature',
+        status: 'new',
+        priority: 'medium',
+        assignee: '',
+        description: '',
+        pr: '',
+        created_at: '2026-06-01',
+        updated_at: '2026-06-01',
+        summary: 'Unrelated summary.',
+        tags: []
+      },
+      '# Problem\n\nAlpha keyword lives in the body.'
+    );
+    await writeTask(cwd, {
+      id: 'TASK-0003',
+      title: 'No match',
+      type: 'feature',
+      status: 'new',
+      priority: 'medium',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: 'Nothing useful.',
+      tags: []
+    });
+
+    const result = await runCli(cwd, ['search', 'ALPHA', 'KEYWORD']);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /TASK-0001\tSummary match/);
+    assert.match(result.stdout, /TASK-0002\tBody match/);
+    assert.doesNotMatch(result.stdout, /No match/);
   });
 });
 
