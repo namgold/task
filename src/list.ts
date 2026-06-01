@@ -11,14 +11,8 @@ export async function listTasks(
   viewName?: string,
   options: TaskPathOptions = {}
 ): Promise<string> {
-  const tasks = await loadTasks(tasksDir, options);
-  if (viewName && !Object.prototype.hasOwnProperty.call(config.views, viewName)) {
-    throw new Error(`View not found: ${viewName}`);
-  }
-
+  const filtered = await getMatchingTasks(tasksDir, config, query, viewName, options);
   const view = viewName ? config.views[viewName] : undefined;
-  const effectiveQuery = combineQueries(view?.filter ?? '', query);
-  const filtered = tasks.filter((task) => matchesTaskQuery(task, effectiveQuery));
   const sorted = sortTasks(config, filtered, view?.sort ?? []);
   const columns = resolveColumns(config, view?.columns ?? []);
   const warnings = buildColumnWarnings(config, columns);
@@ -28,6 +22,34 @@ export async function listTasks(
     'No tasks found.'
   );
   return warnings.length > 0 ? `${warnings.join('\n')}\n${table}` : table;
+}
+
+export async function countTasks(
+  tasksDir: string,
+  config: TaskConfig,
+  query: string,
+  viewName?: string,
+  options: TaskPathOptions = {}
+): Promise<number> {
+  const filtered = await getMatchingTasks(tasksDir, config, query, viewName, options);
+  return filtered.length;
+}
+
+async function getMatchingTasks(
+  tasksDir: string,
+  config: TaskConfig,
+  query: string,
+  viewName?: string,
+  options: TaskPathOptions = {}
+): Promise<TaskFile[]> {
+  const tasks = await loadTasks(tasksDir, options);
+  if (viewName && !Object.prototype.hasOwnProperty.call(config.views, viewName)) {
+    throw new Error(`View not found: ${viewName}`);
+  }
+
+  const view = viewName ? config.views[viewName] : undefined;
+  const effectiveQuery = combineQueries(view?.filter ?? '', query);
+  return tasks.filter((task) => matchesTaskQuery(task, effectiveQuery));
 }
 
 function combineQueries(left: string, right: string): string {

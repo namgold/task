@@ -11,7 +11,7 @@ Use this when an AI assistant needs to work with this repository.
 
 `task` is a local-first, Git-native task tracker. Each task is a human-editable markdown file stored in the repository, usually under `.tasks/`, with YAML frontmatter plus a readable markdown body.
 
-The markdown file is the source of truth. The CLI is a helper for creation, listing, search, update, validation, and view management.
+The markdown file is the source of truth. The CLI is a helper for creation, listing, counting, search, update, validation, and view management.
 
 ## Core rules
 
@@ -30,6 +30,7 @@ Use the CLI for anything that should be reflected in the repository:
 - update task frontmatter
 - inspect a task
 - search tasks
+- count tasks
 - validate task files
 - manage saved views in `.taskrc.yml`
 - run a saved view by name (e.g. `task view my-view`)
@@ -38,4 +39,3 @@ Use the CLI for anything that should be reflected in the repository:
 
 - [Task format reference](../references/task-format.md)
 - [MCP contract](../mcp/SPEC.md)
-

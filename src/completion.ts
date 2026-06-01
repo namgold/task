@@ -12,6 +12,7 @@ export function getCompletionSuggestions(config: TaskConfig, context: string, pr
       return suggest(Object.keys(config.views));
     case 'view-rm':
     case 'list-view':
+    case 'count-view':
       return suggest(Object.keys(config.views));
     default:
       return [];
@@ -28,12 +29,14 @@ export function buildBashCompletionScript(): string {
     '  local subcommand="${COMP_WORDS[2]-}"',
     '',
     '  if [[ $COMP_CWORD -eq 1 ]]; then',
-    '    mapfile -t COMPREPLY < <(compgen -W "new list ls view show update validate search" -- "$cur")',
+    '    mapfile -t COMPREPLY < <(compgen -W "new list ls count view show update validate search" -- "$cur")',
     '    return 0',
     '  fi',
     '',
     '  if [[ "$command" == "view" && $COMP_CWORD -eq 2 ]]; then',
     '    context="view-name"',
+    '  elif [[ "$command" == "count" && $COMP_CWORD -eq 2 ]]; then',
+    '    context="count-view"',
     '  elif [[ "$command" == "view" && "$subcommand" == "rm" && $COMP_CWORD -eq 3 ]]; then',
     '    context="view-name"',
     '  elif [[ ( "$command" == "list" || "$command" == "ls" ) && "$prev" == "--view" ]]; then',
@@ -73,7 +76,8 @@ export function buildFishCompletionScript(): string {
     '    return 1',
     'end',
     '',
-    'complete -c task -n "__fish_use_subcommand" -f -a "new list ls view show update validate search"',
+    'complete -c task -n "__fish_use_subcommand" -f -a "new list ls count view show update validate search"',
+    'complete -c task -n "__fish_seen_subcommand_from count" -f -a "(__task_complete_views)"',
     'complete -c task -n "__fish_seen_subcommand_from view" -f -a "(__task_complete_views)"',
     'complete -c task -n "__task_needs_list_view_completion" -f -a "(__task_complete_list_view)"',
     ''
@@ -87,7 +91,7 @@ export function buildZshCompletionScript(): string {
     '_task() {',
     '  local -a commands views',
     '  local view_index',
-    '  commands=(new list ls view show update validate search)',
+    '  commands=(new list ls count view show update validate search)',
     '',
     '  if (( CURRENT == 2 )); then',
     '    compadd -- $commands',
@@ -101,6 +105,12 @@ export function buildZshCompletionScript(): string {
     '        return',
     '      fi',
     '      if [[ ${words[3]} == rm ]] && (( CURRENT == 4 )); then',
+    '        _task_complete_views',
+    '        return',
+    '      fi',
+    '      ;;',
+    '    count)',
+    '      if (( CURRENT == 3 )); then',
     '        _task_complete_views',
     '        return',
     '      fi',

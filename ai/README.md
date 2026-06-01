@@ -25,7 +25,7 @@ mkdir -p .claude/commands
 cp ai/skill/SKILL.md .claude/commands/task.md
 ```
 
-This registers `/task` as a custom slash command in Claude Code. Use it in any Claude Code session in this project to have the assistant create, update, search, and validate tasks.
+This registers `/task` as a custom slash command in Claude Code. Use it in any Claude Code session in this project to have the assistant create, update, count, search, and validate tasks.
 
 ### Claude Code — MCP server (advanced)
 
@@ -70,4 +70,3 @@ cp -r ai/skill/ "$CODEX_HOME/skills/task/"
 ```
 
 Codex will pick up the skill automatically on next load.
-

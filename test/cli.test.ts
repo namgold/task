@@ -120,6 +120,70 @@ test('list and view render saved tables', { concurrency: false }, async () => {
   });
 });
 
+test('count reports all tasks and saved view totals', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    await runCli(cwd, [
+      'view',
+      'create',
+      'Open Tasks',
+      'status != done',
+      '--column',
+      'title'
+    ]);
+
+    await writeTask(cwd, {
+      id: 'TASK-0001',
+      title: 'Open one',
+      type: 'feature',
+      status: 'new',
+      priority: 'high',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: '',
+      tags: []
+    });
+    await writeTask(cwd, {
+      id: 'TASK-0002',
+      title: 'Open two',
+      type: 'feature',
+      status: 'blocked',
+      priority: 'low',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: '',
+      tags: []
+    });
+    await writeTask(cwd, {
+      id: 'TASK-0003',
+      title: 'Closed',
+      type: 'feature',
+      status: 'done',
+      priority: 'low',
+      assignee: '',
+      description: '',
+      pr: '',
+      created_at: '2026-06-01',
+      updated_at: '2026-06-01',
+      summary: '',
+      tags: []
+    });
+
+    const allResult = await runCli(cwd, ['count']);
+    assert.equal(allResult.status, 0, allResult.stderr);
+    assert.equal(allResult.stdout.trim(), '3');
+
+    const viewResult = await runCli(cwd, ['count', 'Open Tasks']);
+    assert.equal(viewResult.status, 0, viewResult.stderr);
+    assert.equal(viewResult.stdout.trim(), '2');
+  });
+});
+
 test('list -- parses quoted values, implicit AND, and parenthesized OR groups', { concurrency: false }, async () => {
   await withWorkspace(async (cwd) => {
     await writeTask(cwd, {

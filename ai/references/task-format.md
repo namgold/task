@@ -29,10 +29,11 @@ Use this reference when an agent needs to understand how tasks are represented i
 task new --title "Fix reconnect" --type bug --priority high
 task list
 task ls "status != done && status != rejected"
+task count
+task count "open-work"
 task show TASK-0001
 task update TASK-0001 status=approved assignee=nam
 task search websocket
 task validate
 task view ls
 ```
-

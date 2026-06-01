@@ -87,6 +87,8 @@ task list
 task list 'status == "Demo Todo"'
 task ls 'status != "Demo Done"'
 task ls --view demo-open
+task count
+task count demo-open
 task update TASK-0001 status="Demo In Review" assignee=demo-user
 task show TASK-0001
 task search demo
@@ -100,7 +102,7 @@ Selectable values are exact strings from `.taskrc.yml`. Quote values that contai
 
 ## Shell completion
 
-The CLI can generate shell completion scripts for Bash, Fish, and Zsh. They suggest saved view names after `task view`, plus `--view` values for `task list` / `task ls`.
+The CLI can generate shell completion scripts for Bash, Fish, and Zsh. They suggest saved view names after `task view` and `task count`, plus `--view` values for `task list` / `task ls`.
 
 When you install the package with `npm i -g .`, it writes the Bash, Fish, and Zsh completion files into your user completion directories automatically.
 
@@ -162,7 +164,7 @@ cp -r ai/skill/ "$CODEX_HOME/skills/task/"
 
 ### MCP server (advanced)
 
-`ai/mcp/server.js` exposes the task CLI as MCP tools (`task.new`, `task.list`, `task.update`, etc.). See `ai/README.md` for installation instructions.
+`ai/mcp/server.js` exposes the task CLI as MCP tools (`task.new`, `task.list`, `task.count`, `task.update`, etc.). See `ai/README.md` for installation instructions.
 
 ## Git workflow recommendation
 

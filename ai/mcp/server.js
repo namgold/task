@@ -107,6 +107,16 @@ const TOOLS = [
     }
   },
   {
+    name: 'task.count',
+    description: 'Count tasks, optionally scoped to a saved view name',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        view: { type: 'string', description: 'Saved view name' }
+      }
+    }
+  },
+  {
     name: 'task.show',
     description: 'Return the full markdown of a task by ID',
     inputSchema: {
@@ -196,6 +206,9 @@ function callTool(name, input = {}) {
       if (input.view) args.push('--view', input.view);
       return runTask(args);
     }
+
+    case 'task.count':
+      return runTask(input.view ? ['count', input.view] : ['count']);
 
     case 'task.show':
       return runTask(['show', input.id]);

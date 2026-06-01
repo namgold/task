@@ -26,6 +26,7 @@ import {
   buildZshCompletionScript,
   getCompletionSuggestions
 } from './completion.js';
+import { countTasks } from './list.js';
 
 const program = new Command();
 
@@ -86,6 +87,19 @@ program
     const query = queryParts.join(' ').trim();
     const output = await listTasks(tasksDir, config, query, options.view, { trusted: true });
     await writeText(process.stdout, `${output}\n`);
+  });
+
+program
+  .command('count')
+  .description('Count matching tasks')
+  .argument('[view_name...]', 'saved view name')
+  .action(async (viewNameParts: string[]) => {
+    const config = await loadConfig();
+    const cwd = process.cwd();
+    const tasksDir = await resolveTasksDirWithinWorkspace(cwd, config.tasksDir);
+    const viewName = viewNameParts.join(' ').trim();
+    const count = await countTasks(tasksDir, config, '', viewName || undefined, { trusted: true });
+    await writeText(process.stdout, `${count}\n`);
   });
 
 const viewCommand = program.command('view').description('Manage saved task views');

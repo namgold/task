@@ -37,6 +37,11 @@ test('getCompletionSuggestions -- list-view context returns view names', () => {
   assert.deepEqual(result, ['High Priority', 'Open Tasks']);
 });
 
+test('getCompletionSuggestions -- count-view context returns view names', () => {
+  const result = getCompletionSuggestions(sampleConfig, 'count-view', '');
+  assert.deepEqual(result, ['High Priority', 'Open Tasks']);
+});
+
 test('getCompletionSuggestions -- unknown context returns empty array', () => {
   const result = getCompletionSuggestions(sampleConfig, 'unknown', '');
   assert.deepEqual(result, []);
@@ -60,9 +65,12 @@ test('installing completions writes bash and fish scripts', async () => {
     const zshContent = await readFile(zshPath, 'utf8');
 
     assert.match(bashContent, /complete -F _task_completion task/);
+    assert.match(bashContent, /new list ls count view show update validate search/);
     assert.match(fishContent, /complete -c task -n "__fish_seen_subcommand_from view"/);
+    assert.match(fishContent, /complete -c task -n "__fish_seen_subcommand_from count"/);
     assert.match(zshContent, /#compdef task/);
     assert.match(zshContent, /compdef _task task/);
+    assert.match(zshContent, /commands=\(new list ls count view show update validate search\)/);
   } finally {
     await rm(home, { recursive: true, force: true });
   }
