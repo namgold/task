@@ -271,8 +271,7 @@ function normalizeFieldValue(field: FieldConfig, value: string | string[]): stri
   }
 
   if (field.options?.length) {
-    const normalized = value.trim().toLowerCase().replace(/^\d+\.\s*/, '').replace(/\s+/g, '_');
-    return normalized;
+    return value;
   }
 
   return value;

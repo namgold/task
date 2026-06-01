@@ -174,7 +174,9 @@ function evaluateQuery(node: QueryNode, task: TaskFile): boolean {
   switch (node.type) {
     case 'comparison': {
       const actual = getTaskField(task, node.field);
-      return node.operator === '=' ? actual === node.value : actual !== node.value;
+      const left = normalizeComparableValue(actual);
+      const right = normalizeComparableValue(node.value);
+      return node.operator === '=' ? left === right : left !== right;
     }
     case 'and':
       return evaluateQuery(node.left, task) && evaluateQuery(node.right, task);
@@ -209,6 +211,10 @@ function stringifyValue(value: unknown): string {
     return value.toISOString();
   }
   return String(value);
+}
+
+function normalizeComparableValue(value: string): string {
+  return value.trim().toLowerCase().replace(/^\d+\.\s*/, '').replace(/\s+/g, '_');
 }
 
 function tokenize(query: string): Token[] {

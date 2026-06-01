@@ -129,8 +129,8 @@ test('list -- parses quoted values, implicit AND, and parenthesized OR groups', 
     const result = await runCli(cwd, ['list', 'title == "Alpha task" (status == new || status == blocked)']);
     assert.equal(result.status, 0, result.stderr);
     assert.equal((result.stdout.match(/Alpha task/g) ?? []).length, 2);
-    assert.match(result.stdout, /\bnew\b/);
-    assert.match(result.stdout, /\bblocked\b/);
+    assert.match(result.stdout, /\bNew\b/);
+    assert.match(result.stdout, /\bBlocked\b/);
     assert.doesNotMatch(result.stdout, /Beta task/);
   });
 });

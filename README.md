@@ -13,7 +13,7 @@ Tasks live under `.tasks/` by default. Each task is one markdown file with YAML 
 id: TASK-0001
 title: Example task
 type: feature
-status: todo
+status: new
 priority: medium
 assignee:
 owner:
@@ -44,16 +44,15 @@ fields:
   - id: $ID
   - status:
       options:
-        - 1. New
-        - 2. Brainstorming
-        - 2. Pending_review
-        - 2. Need_revision
-        - 2. Approved
-        - 2. Rejected
-        - 3. Implementing
-        - 3. Pending_review
-        - 3. Done
-        - 3. Blocked
+        - New
+        - Brainstorming
+        - Pending Review
+        - Need Revision
+        - Approved
+        - Rejected
+        - Implementing
+        - Done
+        - Blocked
       default: new
   - priority:
       default: medium
@@ -67,7 +66,7 @@ fields:
         - Bug
         - Feature
         - Enhancement
-        - Ux
+        - UX
         - Chore
         - Idea
       default: idea
@@ -95,7 +94,7 @@ views:
 ```sh
 task new --title "Fix websocket reconnect" --type bug --priority high
 task list
-task list status=todo
+task list status=new
 task ls "status != done && status != rejected"
 task ls --view not-done
 task update TASK-0001 status=approved assignee=nam

@@ -55,8 +55,7 @@ function validateSelectableField(config: TaskConfig, name: string, value: unknow
     return;
   }
 
-  const normalized = value.trim().toLowerCase().replace(/^\d+\.\s*/, '').replace(/\s+/g, '_');
-  if (!field.options.some((option) => option.value === normalized)) {
+  if (!field.options.some((option) => option.value === value)) {
     throw new Error(`Invalid ${name}: ${value}`);
   }
 }

@@ -225,7 +225,7 @@ test('task -- explicit fields override defaults and unknown fields are ignored',
   assert.equal('ignored' in fm, false);
 });
 
-test('task -- selectable values normalize from labels and defaults', () => {
+test('task -- selectable values preserve exact values and defaults', () => {
   const config: TaskConfig = {
     tasksDir: '.tasks',
     fields: [
@@ -233,8 +233,8 @@ test('task -- selectable values normalize from labels and defaults', () => {
       {
         name: 'status',
         options: [
-          { label: '1. New', value: 'new' },
-          { label: '2. Done', value: 'done' }
+          { label: '1. New', value: '1. New' },
+          { label: '2. Done', value: '2. Done' }
         ],
         default: '2. Done'
       }
@@ -245,8 +245,8 @@ test('task -- selectable values normalize from labels and defaults', () => {
   const explicit = buildNewTaskFrontmatter(config, { id: 'TASK-0001', title: 'Example', fields: { status: '1. New' } });
   const fallback = buildNewTaskFrontmatter(config, { id: 'TASK-0002', title: 'Example' });
 
-  assert.equal(explicit.status, 'new');
-  assert.equal(fallback.status, 'done');
+  assert.equal(explicit.status, '1. New');
+  assert.equal(fallback.status, '2. Done');
   assert.equal(explicit.id, 'TASK-0001');
 });
 

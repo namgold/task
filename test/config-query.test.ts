@@ -42,10 +42,10 @@ test('taskConfigFromDocument normalizes legacy and mixed config shapes', () => {
   assert.deepEqual(config.fields[1], {
     name: 'status',
     options: [
-      { label: '1. New', value: 'new' },
-      { label: '2. Done', value: 'done' }
+      { label: '1. New', value: '1. New' },
+      { label: '2. Done', value: '2. Done' }
     ],
-    default: 'done'
+    default: '2. Done'
   });
   assert.deepEqual(config.fields[2], { name: 'title', options: undefined, default: 'Seed title' });
   assert.deepEqual(config.fields[3], { name: 'summary' });
@@ -88,7 +88,7 @@ test('buildTaskrcDocument preserves extra keys and round-trips view settings', (
     { id: '$ID' },
     {
       status: {
-        options: ['1. New', '2. Brainstorming', '2. Pending_review', '2. Need_revision', '2. Approved', '2. Rejected', '3. Implementing', '3. Pending_review', '3. Done', '3. Blocked'],
+        options: ['New', 'Brainstorming', 'Pending Review', 'Need Revision', 'Approved', 'Rejected', 'Implementing', 'Done', 'Blocked'],
         default: 'new'
       }
     },

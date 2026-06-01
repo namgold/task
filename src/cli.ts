@@ -316,16 +316,11 @@ function validateConfiguredFields(
       continue;
     }
 
-    const normalized = normalizeSelectableValue(value);
     const allowed = new Set(field.options.map((option) => option.value));
-    if (!allowed.has(normalized)) {
+    if (!allowed.has(value)) {
       throw new Error(`Invalid ${fieldName}: ${value}`);
     }
   }
-}
-
-function normalizeSelectableValue(value: string): string {
-  return value.trim().toLowerCase().replace(/^\d+\.\s*/, '').replace(/\s+/g, '_');
 }
 
 function normalizeColumns(values: string[], fields: { name: string }[]): string[] {

@@ -71,8 +71,7 @@ function validateSelectableField(
     return;
   }
 
-  const normalized = value.trim().toLowerCase().replace(/^\d+\.\s*/, '').replace(/\s+/g, '_');
-  if (!field.options.some((option) => option.value === normalized)) {
+  if (!field.options.some((option) => option.value === value)) {
     issues.push({ filePath, message: `Invalid ${field.name}: ${value}` });
   }
 }

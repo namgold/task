@@ -1,6 +1,6 @@
 import type { TaskConfig } from './config.js';
 import type { TaskFile } from './task.js';
-import { loadTasks, formatTaskRowWithFields, getTaskFieldValue } from './task.js';
+import { loadTasks, getTaskFieldValue } from './task.js';
 import { matchesTaskQuery } from './query.js';
 import { renderTable } from './table.js';
 
@@ -12,7 +12,11 @@ export async function listTasks(tasksDir: string, config: TaskConfig, query: str
   const sorted = sortTasks(filtered, view?.sort ?? []);
   const columns = resolveColumns(config, view?.columns ?? []);
   const warnings = buildColumnWarnings(config, columns);
-  const table = renderTable(columns, sorted.map((task) => formatTaskRowWithFields(task, columns)), 'No tasks found.');
+  const table = renderTable(
+    columns,
+    sorted.map((task) => formatDisplayRow(task, columns, config)),
+    'No tasks found.'
+  );
   return warnings.length > 0 ? `${warnings.join('\n')}\n${table}` : table;
 }
 
@@ -67,4 +71,23 @@ function buildColumnWarnings(config: TaskConfig, columns: string[]): string[] {
   }
 
   return warnings;
+}
+
+function formatDisplayRow(task: TaskFile, fields: string[], config: TaskConfig): string[] {
+  return fields.map((field) => formatDisplayFieldValue(task, field, config));
+}
+
+function formatDisplayFieldValue(task: TaskFile, key: string, config: TaskConfig): string {
+  const rawValue = getTaskFieldValue(task, key);
+  if (!rawValue) {
+    return rawValue;
+  }
+
+  const field = config.fields.find((entry) => entry.name === key);
+  if (!field?.options?.length) {
+    return rawValue;
+  }
+
+  const matched = field.options.find((option) => option.value === rawValue || option.label === rawValue);
+  return matched?.label ?? rawValue;
 }

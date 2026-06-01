@@ -110,16 +110,15 @@ export const defaultTaskConfig: TaskConfig = {
     {
       name: 'status',
       options: [
-        { label: '1. New', value: 'new' },
-        { label: '2. Brainstorming', value: 'brainstorming' },
-        { label: '2. Pending_review', value: 'pending_review' },
-        { label: '2. Need_revision', value: 'need_revision' },
-        { label: '2. Approved', value: 'approved' },
-        { label: '2. Rejected', value: 'rejected' },
-        { label: '3. Implementing', value: 'implementing' },
-        { label: '3. Pending_review', value: 'pending_review' },
-        { label: '3. Done', value: 'done' },
-        { label: '3. Blocked', value: 'blocked' }
+        { label: 'New', value: 'new' },
+        { label: 'Brainstorming', value: 'brainstorming' },
+        { label: 'Pending Review', value: 'pending_review' },
+        { label: 'Need Revision', value: 'need_revision' },
+        { label: 'Approved', value: 'approved' },
+        { label: 'Rejected', value: 'rejected' },
+        { label: 'Implementing', value: 'implementing' },
+        { label: 'Done', value: 'done' },
+        { label: 'Blocked', value: 'blocked' }
       ],
       default: 'new'
     },
@@ -139,7 +138,7 @@ export const defaultTaskConfig: TaskConfig = {
         { label: 'Bug', value: 'bug' },
         { label: 'Feature', value: 'feature' },
         { label: 'Enhancement', value: 'enhancement' },
-        { label: 'Ux', value: 'ux' },
+        { label: 'UX', value: 'ux' },
         { label: 'Chore', value: 'chore' },
         { label: 'Idea', value: 'idea' }
       ],
@@ -302,7 +301,7 @@ function normalizeFieldDefinition(value: unknown): FieldConfig | null {
   return {
     name: normalizedName,
     options: options.length > 0 ? options : undefined,
-    default: defaultValue ? (options.length > 0 ? normalizeOptionValue(defaultValue) : defaultValue) : undefined
+    default: defaultValue ? defaultValue : undefined
   };
 }
 
@@ -327,15 +326,7 @@ function normalizeFieldOptions(value: unknown): FieldOption[] {
   return value
     .map((entry) => stringValue(entry).trim())
     .filter(Boolean)
-    .map((label) => ({ label, value: normalizeOptionValue(label) }));
-}
-
-function normalizeOptionValue(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^\d+\.\s*/, '')
-    .replace(/\s+/g, '_');
+    .map((label) => ({ label, value: label }));
 }
 
 function buildFieldDocument(fields: FieldConfig[]): unknown[] {

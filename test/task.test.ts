@@ -198,9 +198,9 @@ test('buildNewTaskFrontmatter -- explicit field value overrides default', () => 
   assert.equal(fm.status, 'done');
 });
 
-test('buildNewTaskFrontmatter -- field with options normalizes the value', () => {
+test('buildNewTaskFrontmatter -- field with options preserves the exact value', () => {
   const fm = buildNewTaskFrontmatter(testConfig, { id: 'TASK-0001', title: 'Test', fields: { status: 'Done' } });
-  assert.equal(fm.status, 'done');
+  assert.equal(fm.status, 'Done');
 });
 
 test('buildNewTaskFrontmatter -- field without default or explicit value gets empty string', () => {
