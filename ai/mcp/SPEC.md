@@ -36,4 +36,4 @@ The server is implemented in `ai/mcp/server.js`. It shells out to the `task` CLI
 
 Requires one of:
 - `dist/cli.js` to exist (run `pnpm build` first), or
-- `task` installed globally (`npm i -g .`)
+- `task` installed globally (`npm i -g @namgold/task`)

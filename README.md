@@ -104,18 +104,20 @@ Selectable values are exact strings from `.taskrc.yml`. Quote values that contai
 
 The CLI can generate shell completion scripts for Bash, Fish, and Zsh. They suggest saved view names after `task view` and `task count`, plus `--view` values for `task list` / `task ls`.
 
-When you install the package with `npm i -g .`, it writes the Bash, Fish, and Zsh completion files into your user completion directories automatically.
+When you install the package from npm with `npm i -g @namgold/task`, it writes the Bash, Fish, and Zsh completion files into your user completion directories automatically.
 
-The installed Bash, Fish, and Zsh files are updated automatically each time you reinstall or upgrade `task` with `npm i -g .`.
+The installed Bash, Fish, and Zsh files are updated automatically each time you reinstall or upgrade `task` with `npm i -g @namgold/task`.
 
 
 ## Global install
 
-Install the CLI locally from the repository with:
+Install the published CLI package from npm:
 
 ```sh
-npm i -g .
+npm i -g @namgold/task
 ```
+
+Package page: https://www.npmjs.com/package/@namgold/task
 
 This is the preferred install path for using `task` as a command-line tool.
 

@@ -4,7 +4,7 @@
  *
  * Requires one of:
  *   - dist/cli.js to exist (run `pnpm build` first), OR
- *   - `task` installed globally (`npm i -g .`)
+ *   - `task` installed globally (`npm i -g @namgold/task`)
  */
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';

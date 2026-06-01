@@ -8,12 +8,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 pnpm build            # compile TypeScript → dist/
 pnpm dev -- <args>    # run CLI directly without building (via tsx)
 pnpm test             # run all tests
-npm i -g .            # install globally (preferred; also regenerates shell completions via postinstall)
+npm i -g @namgold/task # install globally (preferred; also regenerates shell completions via postinstall)
 ```
 
 Run a single test file: `node --import tsx --test test/cli.test.ts`
 
-Do **not** use `pnpm bundle:linux` / `pnpm bundle:macos-silicon` for distribution — use `npm i -g .` instead.
+Do **not** use `pnpm bundle:linux` / `pnpm bundle:macos-silicon` for distribution — use `npm i -g @namgold/task` instead.
 
 ## Architecture
 

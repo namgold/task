@@ -6,4 +6,4 @@
 - `pnpm bundle:linux` succeeds and produces `release/task-linux-x64`.
 - The build emits `postject` warnings about section names such as `.note.100` and `.note`, but the executable still runs correctly.
 - If these warnings matter later, the packaging flow should be revisited, but they are not currently blocking.
-- Distribution note: do not rely on `bundle:linux` or mac packaging scripts going forward; install the tool with `npm i -g .` instead.
+- Distribution note: do not rely on `bundle:linux` or mac packaging scripts going forward; install the tool with `npm i -g @namgold/task` instead.
