@@ -5,6 +5,9 @@ import matter from 'gray-matter';
 import { stringify as stringifyYaml } from 'yaml';
 
 import type { FieldConfig, TaskConfig } from './config.js';
+import { assertPathWithinDirectory, resolveTasksDirWithinWorkspace } from './config.js';
+
+const naturalCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 export interface TaskFile {
   filePath: string;
@@ -19,6 +22,11 @@ export interface TaskFile {
 export interface NewTaskInput {
   title: string;
   fields?: Record<string, string | undefined>;
+}
+
+export interface TaskPathOptions {
+  cwd?: string;
+  trusted?: boolean;
 }
 
 export function todayIsoDate(): string {
@@ -44,13 +52,17 @@ export function taskFileName(id: string, title: string): string {
   return slug ? `${id}-${slug}.md` : `${id}.md`;
 }
 
-export async function discoverTaskFiles(tasksDir: string): Promise<string[]> {
+export async function discoverTaskFiles(tasksDir: string, options: TaskPathOptions = {}): Promise<string[]> {
+  const safeTasksDir = await resolveTasksDirForAccess(tasksDir, options);
+
   try {
-    return await fg('TASK-*.md', {
-      cwd: tasksDir,
+    const files = await fg('TASK-*.md', {
+      cwd: safeTasksDir,
       absolute: true,
       onlyFiles: true
     });
+    await Promise.all(files.map((filePath) => assertTaskFilePathWithinTasksDir(safeTasksDir, filePath)));
+    return files;
   } catch (error) {
     if (isMissingDirectory(error)) {
       return [];
@@ -59,7 +71,11 @@ export async function discoverTaskFiles(tasksDir: string): Promise<string[]> {
   }
 }
 
-export async function readTaskFile(filePath: string): Promise<TaskFile> {
+export async function readTaskFile(filePath: string, options: { tasksDir?: string } = {}): Promise<TaskFile> {
+  if (options.tasksDir) {
+    await assertTaskFilePathWithinTasksDir(options.tasksDir, filePath);
+  }
+
   const raw = await fs.readFile(filePath, 'utf8');
   const parsed = matter(raw);
   const frontmatter = normalizeFrontmatter(toPlainObject(parsed.data));
@@ -83,17 +99,18 @@ export function stringifyTaskFile(task: { frontmatter: Record<string, unknown>; 
   return `---\n${normalizedYaml}---\n${task.body}`;
 }
 
-export async function loadTasks(tasksDir: string): Promise<TaskFile[]> {
-  const files = await discoverTaskFiles(tasksDir);
-  const tasks = await Promise.all(files.map(async (filePath) => readTaskFile(filePath)));
-  return tasks.sort((left, right) => left.id.localeCompare(right.id));
+export async function loadTasks(tasksDir: string, options: TaskPathOptions = {}): Promise<TaskFile[]> {
+  const safeTasksDir = await resolveTasksDirForAccess(tasksDir, options);
+  const files = await discoverTaskFiles(safeTasksDir, { trusted: true });
+  const tasks = await Promise.all(files.map(async (filePath) => readTaskFile(filePath, { tasksDir: safeTasksDir })));
+  return tasks.sort((left, right) => naturalCollator.compare(left.id, right.id));
 }
 
 export function flattenTaskSearchText(task: TaskFile): string {
   return [task.id, task.title, stringifyValue(task.frontmatter), task.body].join('\n').toLowerCase();
 }
 
-export function nextTaskId(tasks: TaskFile[]): string {
+export function nextTaskId(tasks: Array<{ id: string }>): string {
   let maxNumber = 0;
   for (const task of tasks) {
     const match = /^TASK-(\d{4,})$/i.exec(task.id);
@@ -318,4 +335,24 @@ function toPlainObject(value: unknown): Record<string, unknown> {
 
 function isMissingDirectory(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'ENOENT';
+}
+
+async function resolveTasksDirForAccess(tasksDir: string, options: TaskPathOptions): Promise<string> {
+  if (options.cwd) {
+    return resolveTasksDirWithinWorkspace(options.cwd, tasksDir);
+  }
+
+  if (options.trusted) {
+    return path.resolve(tasksDir);
+  }
+
+  throw new Error('Task directory access requires a workspace cwd or an explicit trusted path.');
+}
+
+async function assertTaskFilePathWithinTasksDir(tasksDir: string, filePath: string): Promise<void> {
+  await assertPathWithinDirectory(
+    tasksDir,
+    filePath,
+    `Task file must stay within the configured tasks_dir: ${filePath}`
+  );
 }

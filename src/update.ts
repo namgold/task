@@ -2,15 +2,18 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import type { TaskConfig } from './config.js';
+import { assertPathWithinDirectory, resolveTasksDirForWrite } from './config.js';
 import { loadTasks, readTaskFile, setFrontmatterField, stringifyTaskFile } from './task.js';
 
 export async function updateTask(
   tasksDir: string,
   config: TaskConfig,
   id: string,
-  updates: Record<string, string>
+  updates: Record<string, string>,
+  options: { cwd?: string } = {}
 ): Promise<string> {
-  const files = await loadTasks(tasksDir);
+  const safeTasksDir = await resolveTasksDirForWrite(options.cwd ?? process.cwd(), tasksDir);
+  const files = await loadTasks(safeTasksDir, { trusted: true });
   const task = files.find((entry) => entry.id === id);
 
   if (!task) {
@@ -33,6 +36,11 @@ export async function updateTask(
     body: task.body
   });
 
+  await assertPathWithinDirectory(
+    safeTasksDir,
+    task.filePath,
+    `Task file must stay within the configured tasks_dir: ${task.filePath}`
+  );
   await fs.writeFile(task.filePath, `${raw.endsWith('\n') ? raw : `${raw}\n`}`, 'utf8');
   return task.filePath;
 }

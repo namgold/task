@@ -1,19 +1,22 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
 import { getCompletionSuggestions } from '../src/completion.js';
-import { buildTaskrcDocument, defaultTaskConfig, readTaskrcDocument, taskConfigFromDocument } from '../src/config.js';
+import { buildTaskrcDocument, defaultTaskConfig, loadConfig, readTaskrcDocument, taskConfigFromDocument } from '../src/config.js';
 import { listTasks } from '../src/list.js';
+import { createTask } from '../src/new.js';
 import { matchesTaskQuery, parseTaskQuery } from '../src/query.js';
 import { updateTask } from '../src/update.js';
 import { validateTasks } from '../src/validate.js';
 import {
   buildNewTaskFrontmatter,
+  discoverTaskFiles,
   flattenTaskSearchText,
   getTaskFieldValue,
+  loadTasks,
   slugify,
   stringifyTaskFile,
   taskFileName,
@@ -185,7 +188,7 @@ test('config -- readTaskrcDocument rejects invalid view entry shapes', async () 
   });
 });
 
-test('config -- readTaskrcDocument rejects invalid sort values', async () => {
+test('config -- loadConfig rejects invalid sort values', async () => {
   await withTempDir(async (dir) => {
     await writeFile(
       path.join(dir, '.taskrc.yml'),
@@ -193,13 +196,14 @@ test('config -- readTaskrcDocument rejects invalid sort values', async () => {
         'views:',
         '  - Bad:',
         '      filter: status == new',
-        '      columns: ""',
+        '      sort:',
+        '        - priority: sideways',
         ''
       ].join('\n'),
       'utf8'
     );
 
-    await assert.rejects(() => readTaskrcDocument(dir), /Invalid \.taskrc\.yml/);
+    await assert.rejects(() => loadConfig(dir), /Invalid sort direction/);
   });
 });
 
@@ -225,7 +229,7 @@ test('task -- explicit fields override defaults and unknown fields are ignored',
   assert.equal('ignored' in fm, false);
 });
 
-test('task -- selectable values preserve exact values and defaults', () => {
+test('task -- selectable values preserve exact configured values', () => {
   const config: TaskConfig = {
     tasksDir: '.tasks',
     fields: [
@@ -360,7 +364,7 @@ test('list -- warns once for repeated unknown columns and still renders known on
       }
     };
 
-    const output = await listTasks(tasksDir, config, '', 'Broken');
+    const output = await listTasks(tasksDir, config, '', 'Broken', { trusted: true });
 
     assert.equal((output.match(/Warning: column "missing"/g) ?? []).length, 1);
     assert.match(output, /missing\s+missing\s+title/);
@@ -368,7 +372,7 @@ test('list -- warns once for repeated unknown columns and still renders known on
   });
 });
 
-test('list -- unknown view names fall back to the configured field list', async () => {
+test('list -- unknown view names throw', async () => {
   await withTasksDir(async (tasksDir) => {
     await writeTaskFile(tasksDir, { id: 'TASK-0001', title: 'Alpha', status: 'new' });
     const config: TaskConfig = {
@@ -377,10 +381,7 @@ test('list -- unknown view names fall back to the configured field list', async 
       views: {}
     };
 
-    const output = await listTasks(tasksDir, config, '', 'Missing View');
-
-    assert.match(output, /id\s+title\s+status/);
-    assert.match(output, /Alpha/);
+    await assert.rejects(() => listTasks(tasksDir, config, '', 'Missing View', { trusted: true }), /View not found/);
   });
 });
 
@@ -406,7 +407,7 @@ test('update -- applies tag splitting, preserves body, and refreshes updated_at'
       status: 'done',
       tags: 'alpha, beta',
       summary: 'Updated summary'
-    });
+    }, { cwd: path.dirname(tasksDir) });
     const raw = await readFile(filePath, 'utf8');
 
     assert.match(raw, /status: done/);
@@ -430,11 +431,258 @@ test('update -- rejects invalid selectable values and leaves the task file intac
     };
 
     const filePath = await writeTaskFile(tasksDir, { id: 'TASK-0001', title: 'Alpha', status: 'new' });
-    await assert.rejects(() => updateTask(tasksDir, config, 'TASK-0001', { status: 'invalid' }), /Invalid status/);
+    await assert.rejects(
+      () => updateTask(tasksDir, config, 'TASK-0001', { status: 'invalid' }, { cwd: path.dirname(tasksDir) }),
+      /Invalid status/
+    );
 
     const raw = await readFile(filePath, 'utf8');
     assert.match(raw, /status: new/);
     assert.doesNotMatch(raw, /status: invalid/);
+  });
+});
+
+test('update -- preserves exact selectable values', async () => {
+  await withTasksDir(async (tasksDir) => {
+    const config: TaskConfig = {
+      tasksDir: '.tasks',
+      fields: [
+        { name: 'id', generated: '$ID' },
+        {
+          name: 'status',
+          options: [
+            { label: '2. Pending Review', value: '2. Pending Review' },
+            { label: '3. Pending Review', value: '3. Pending Review' }
+          ],
+          default: '2. Pending Review'
+        },
+        { name: 'updated_at', generated: '$UPDATED_AT' }
+      ],
+      views: {}
+    };
+
+    const filePath = await writeTaskFile(tasksDir, { id: 'TASK-0001', title: 'Alpha', status: '2. Pending Review' });
+    await updateTask(tasksDir, config, 'TASK-0001', { status: '3. Pending Review' }, { cwd: path.dirname(tasksDir) });
+
+    const raw = await readFile(filePath, 'utf8');
+    assert.match(raw, /status: 3\. Pending Review/);
+  });
+});
+
+test('new -- direct createTask rejects paths outside the workspace', async () => {
+  await withTempDir(async (dir) => {
+    const outside = path.join(path.dirname(dir), `${path.basename(dir)}-outside`);
+    try {
+      const config: TaskConfig = {
+        tasksDir: '../outside',
+        fields: [{ name: 'id', generated: '$ID' }, { name: 'title' }],
+        views: {}
+      };
+
+      await assert.rejects(
+        () => createTask(outside, config, { title: 'Outside' }, { cwd: dir }),
+        /must stay within the current workspace/
+      );
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test('new -- direct createTask accepts a resolved path inside the workspace', async () => {
+  await withTempDir(async (dir) => {
+    const tasksDir = path.join(dir, '.tasks');
+    const config: TaskConfig = {
+      tasksDir: '.tasks',
+      fields: [{ name: 'id', generated: '$ID' }, { name: 'title' }],
+      views: {}
+    };
+
+    const filePath = await createTask(tasksDir, config, { title: 'Inside' }, { cwd: dir });
+    const raw = await readFile(filePath, 'utf8');
+    assert.match(raw, /id: TASK-0001/);
+    assert.match(path.basename(filePath), /TASK-0001-inside\.md/);
+  });
+});
+
+test('new -- stale id lock files do not block future task creation', async () => {
+  await withTasksDir(async (tasksDir) => {
+    await writeFile(path.join(tasksDir, '.task-id-TASK-0001.lock'), 'TASK-0001', 'utf8');
+    const config: TaskConfig = {
+      tasksDir: '.tasks',
+      fields: [{ name: 'id', generated: '$ID' }, { name: 'title' }],
+      views: {}
+    };
+
+    const filePath = await createTask(tasksDir, config, { title: 'Ignores stale lock' }, { cwd: path.dirname(tasksDir) });
+    assert.match(path.basename(filePath), /TASK-0001-ignores-stale-lock\.md/);
+  });
+});
+
+test('new -- task-file creation collision retries with the next id', async () => {
+  await withTasksDir(async (tasksDir) => {
+    await writeFile(path.join(tasksDir, 'TASK-0001-collision.md'), '---\ntitle: Collision\n---\n# Body\n', 'utf8');
+    const config: TaskConfig = {
+      tasksDir: '.tasks',
+      fields: [{ name: 'id', generated: '$ID' }, { name: 'title' }],
+      views: {}
+    };
+
+    const filePath = await createTask(tasksDir, config, { title: 'Collision' }, { cwd: path.dirname(tasksDir) });
+    assert.match(path.basename(filePath), /TASK-0002-collision\.md/);
+    const raw = await readFile(filePath, 'utf8');
+    assert.match(raw, /id: TASK-0002/);
+  });
+});
+
+test('update -- direct updateTask rejects paths outside the workspace', async () => {
+  await withTempDir(async (dir) => {
+    const outside = path.join(path.dirname(dir), `${path.basename(dir)}-outside`);
+    try {
+      await mkdir(outside, { recursive: true });
+      await writeTaskFile(outside, { id: 'TASK-0001', title: 'Outside', status: 'new' });
+      const config: TaskConfig = {
+        tasksDir: '../outside',
+        fields: [{ name: 'id', generated: '$ID' }, { name: 'status' }],
+        views: {}
+      };
+
+      await assert.rejects(
+        () => updateTask(outside, config, 'TASK-0001', { status: 'done' }, { cwd: dir }),
+        /must stay within the current workspace/
+      );
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test('update -- direct updateTask rejects symlinked task files outside the workspace', async () => {
+  await withTempDir(async (dir) => {
+    const tasksDir = path.join(dir, '.tasks');
+    const outside = path.join(os.tmpdir(), `task-edge-outside-${Date.now()}-${Math.random()}.md`);
+    try {
+      await mkdir(tasksDir, { recursive: true });
+      await writeFile(outside, '---\nid: TASK-0001\ntitle: Outside\nstatus: new\n---\n# Body\n', 'utf8');
+      await symlink(outside, path.join(tasksDir, 'TASK-0001-link.md'));
+      const config: TaskConfig = {
+        tasksDir: '.tasks',
+        fields: [{ name: 'id', generated: '$ID' }, { name: 'status' }],
+        views: {}
+      };
+
+      await assert.rejects(
+        () => updateTask(tasksDir, config, 'TASK-0001', { status: 'done' }, { cwd: dir }),
+        /Task file must stay within the configured tasks_dir/
+      );
+
+      const raw = await readFile(outside, 'utf8');
+      assert.match(raw, /status: new/);
+    } finally {
+      await rm(outside, { force: true });
+    }
+  });
+});
+
+test('validate -- reports symlinked task files outside the workspace', async () => {
+  await withTempDir(async (dir) => {
+    const tasksDir = path.join(dir, '.tasks');
+    const outside = path.join(os.tmpdir(), `task-edge-outside-${Date.now()}-${Math.random()}.md`);
+    try {
+      await mkdir(tasksDir, { recursive: true });
+      await writeFile(outside, '---\nid: TASK-0001\ntitle: Outside\nstatus: new\n---\n# Body\n', 'utf8');
+      await symlink(outside, path.join(tasksDir, 'TASK-0001-link.md'));
+      const config: TaskConfig = {
+        tasksDir: '.tasks',
+        fields: [{ name: 'id', generated: '$ID' }, { name: 'status' }],
+        views: {}
+      };
+
+      const issues = await validateTasks(tasksDir, config, { trusted: true });
+      assert.ok(issues.some((issue) => issue.message.includes('Task file must stay within the configured tasks_dir')));
+    } finally {
+      await rm(outside, { force: true });
+    }
+  });
+});
+
+test('task loading -- loadTasks rejects outside paths when cwd is supplied', async () => {
+  await withTempDir(async (dir) => {
+    const outside = path.join(path.dirname(dir), `${path.basename(dir)}-outside`);
+    try {
+      await mkdir(outside, { recursive: true });
+      await writeTaskFile(outside, { id: 'TASK-0001', title: 'Outside', status: 'new' });
+
+      await assert.rejects(
+        () => loadTasks(outside, { cwd: dir }),
+        /must stay within the current workspace/
+      );
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test('task loading -- discoverTaskFiles rejects outside paths when cwd is supplied', async () => {
+  await withTempDir(async (dir) => {
+    const outside = path.join(path.dirname(dir), `${path.basename(dir)}-outside`);
+    try {
+      await mkdir(outside, { recursive: true });
+      await writeTaskFile(outside, { id: 'TASK-0001', title: 'Outside', status: 'new' });
+
+      await assert.rejects(
+        () => discoverTaskFiles(outside, { cwd: dir }),
+        /must stay within the current workspace/
+      );
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test('task loading -- direct helpers accept inside workspace paths when cwd is supplied', async () => {
+  await withTempDir(async (dir) => {
+    const tasksDir = path.join(dir, '.tasks');
+    await mkdir(tasksDir, { recursive: true });
+    await writeTaskFile(tasksDir, { id: 'TASK-0001', title: 'Inside', status: 'new' });
+
+    const files = await discoverTaskFiles(tasksDir, { cwd: dir });
+    const tasks = await loadTasks(tasksDir, { cwd: dir });
+
+    assert.equal(files.length, 1);
+    assert.equal(tasks.length, 1);
+    assert.equal(tasks[0].id, 'TASK-0001');
+  });
+});
+
+test('task loading -- direct helpers require cwd or explicit trusted path', async () => {
+  await withTempDir(async (dir) => {
+    const tasksDir = path.join(dir, '.tasks');
+    await mkdir(tasksDir, { recursive: true });
+
+    await assert.rejects(
+      () => discoverTaskFiles(tasksDir),
+      /requires a workspace cwd or an explicit trusted path/
+    );
+    await assert.rejects(
+      () => loadTasks(tasksDir),
+      /requires a workspace cwd or an explicit trusted path/
+    );
+  });
+});
+
+test('task loading -- trusted path remains an explicit escape hatch for prevalidated callers', async () => {
+  await withTempDir(async (dir) => {
+    const tasksDir = path.join(dir, '.tasks');
+    await mkdir(tasksDir, { recursive: true });
+    await writeTaskFile(tasksDir, { id: 'TASK-0001', title: 'Trusted', status: 'new' });
+
+    const files = await discoverTaskFiles(tasksDir, { trusted: true });
+    const tasks = await loadTasks(tasksDir, { trusted: true });
+
+    assert.equal(files.length, 1);
+    assert.equal(tasks.length, 1);
+    assert.equal(tasks[0].title, 'Trusted');
   });
 });
 
@@ -469,7 +717,7 @@ test('validate -- reports missing generated fields and invalid selectable values
     };
 
     await writeTaskFile(tasksDir, { title: 'Alpha', status: 'bad', priority: 'high' });
-    const issues = await validateTasks(tasksDir, config);
+    const issues = await validateTasks(tasksDir, config, { trusted: true });
 
     assert.ok(issues.some((issue) => issue.message.includes('Missing required fields')));
     assert.ok(issues.some((issue) => issue.message.includes('Invalid status')));

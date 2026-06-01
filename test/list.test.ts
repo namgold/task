@@ -44,9 +44,13 @@ function writeTask(tasksDir: string, id: string, fields: Record<string, string>)
   );
 }
 
+function listTrusted(tasksDir: string, taskConfig: TaskConfig, query: string, viewName?: string): Promise<string> {
+  return listTasks(tasksDir, taskConfig, query, viewName, { trusted: true });
+}
+
 test('listTasks -- no tasks produces empty message', async () => {
   await withTasksDir(async (tasksDir) => {
-    const result = await listTasks(tasksDir, config, '');
+    const result = await listTrusted(tasksDir, config, '');
     assert.equal(result, 'No tasks found.');
   });
 });
@@ -56,7 +60,7 @@ test('listTasks -- ad-hoc query without view filters tasks', async () => {
     await writeTask(tasksDir, 'TASK-0001', { status: 'new', priority: 'high', title: 'Match' });
     await writeTask(tasksDir, 'TASK-0002', { status: 'done', priority: 'high', title: 'No match' });
 
-    const result = await listTasks(tasksDir, config, 'status == new');
+    const result = await listTrusted(tasksDir, config, 'status == new');
     assert.match(result, /Match/);
     assert.doesNotMatch(result, /No match/);
     assert.match(result, /\bnew\b/);
@@ -70,7 +74,7 @@ test('listTasks -- view filter and ad-hoc query are combined with AND', async ()
     await writeTask(tasksDir, 'TASK-0003', { status: 'done', priority: 'high', title: 'High done' });
 
     // View 'Active' filters status != done; ad-hoc adds priority == high
-    const result = await listTasks(tasksDir, config, 'priority == high', 'Active');
+    const result = await listTrusted(tasksDir, config, 'priority == high', 'Active');
     assert.match(result, /High open/);
     assert.doesNotMatch(result, /Low open/);
     assert.doesNotMatch(result, /High done/);
@@ -86,7 +90,7 @@ test('listTasks -- view with no columns falls back to all config fields', async 
       views: { 'All': { filter: 'status != done', columns: [], sort: [] } }
     };
 
-    const result = await listTasks(tasksDir, noColumnConfig, '', 'All');
+    const result = await listTrusted(tasksDir, noColumnConfig, '', 'All');
     // Header should include all field names
     assert.match(result, /id\s+status\s+priority\s+title/);
   });
@@ -108,7 +112,7 @@ test('listTasks -- sorts by single field descending', async () => {
       }
     };
 
-    const result = await listTasks(tasksDir, sortedConfig, '', 'Sorted');
+    const result = await listTrusted(tasksDir, sortedConfig, '', 'Sorted');
     const lines = result.split('\n').filter((l) => l.trim());
     // Descending alphabetical: Zeta before Alpha
     assert.match(lines[1], /Zeta/);
@@ -138,10 +142,163 @@ test('listTasks -- tie-breaking uses second sort spec', async () => {
       }
     };
 
-    const result = await listTasks(tasksDir, sortedConfig, '', 'TwoSort');
+    const result = await listTrusted(tasksDir, sortedConfig, '', 'TwoSort');
     const lines = result.split('\n').filter((l) => l.trim());
     assert.match(lines[1], /Alpha/);
     assert.match(lines[2], /Zeta/);
     assert.match(lines[3], /Beta/);
+  });
+});
+
+test('listTasks -- selectable fields sort by configured option order', async () => {
+  await withTasksDir(async (tasksDir) => {
+    await writeTask(tasksDir, 'TASK-0001', { status: 'new', priority: 'low', title: 'Low' });
+    await writeTask(tasksDir, 'TASK-0002', { status: 'new', priority: 'high', title: 'High' });
+    await writeTask(tasksDir, 'TASK-0003', { status: 'new', priority: 'critical', title: 'Critical' });
+
+    const rankedConfig: TaskConfig = {
+      ...config,
+      fields: [
+        { name: 'id', generated: '$ID' },
+        {
+          name: 'status',
+          options: [
+            { label: 'New', value: 'new' },
+            { label: 'Blocked', value: 'blocked' },
+            { label: 'Done', value: 'done' }
+          ],
+          default: 'new'
+        },
+        {
+          name: 'priority',
+          options: [
+            { label: 'Low', value: 'low' },
+            { label: 'Medium', value: 'medium' },
+            { label: 'High', value: 'high' },
+            { label: 'Critical', value: 'critical' }
+          ],
+          default: 'medium'
+        },
+        { name: 'title' }
+      ],
+      views: {
+        Ranked: {
+          filter: 'status == new',
+          columns: ['id', 'priority', 'title'],
+          sort: [{ field: 'priority', direction: 'descending' }]
+        }
+      }
+    };
+
+    const result = await listTrusted(tasksDir, rankedConfig, '', 'Ranked');
+    const lines = result.split('\n').filter((l) => l.trim());
+    assert.match(lines[1], /Critical/);
+    assert.match(lines[2], /High/);
+    assert.match(lines[3], /Low/);
+  });
+});
+
+test('listTasks -- selectable sorting uses exact option values', async () => {
+  await withTasksDir(async (tasksDir) => {
+    await writeTask(tasksDir, 'TASK-0001', { status: '3. Pending Review', priority: 'low', title: 'Third' });
+    await writeTask(tasksDir, 'TASK-0002', { status: '2. Pending Review', priority: 'low', title: 'Second' });
+
+    const exactConfig: TaskConfig = {
+      ...config,
+      fields: [
+        { name: 'id', generated: '$ID' },
+        {
+          name: 'status',
+          options: [
+            { label: '2. Pending Review', value: '2. Pending Review' },
+            { label: '3. Pending Review', value: '3. Pending Review' }
+          ],
+          default: '2. Pending Review'
+        },
+        { name: 'priority', options: [{ label: 'low', value: 'low' }], default: 'low' },
+        { name: 'title' }
+      ],
+      views: {
+        Exact: {
+          filter: 'priority == low',
+          columns: ['id', 'status', 'title'],
+          sort: [{ field: 'status', direction: 'ascending' }]
+        }
+      }
+    };
+
+    const result = await listTrusted(tasksDir, exactConfig, '', 'Exact');
+    const lines = result.split('\n').filter((l) => l.trim());
+    assert.match(lines[1], /2\. Pending Review/);
+    assert.match(lines[2], /3\. Pending Review/);
+  });
+});
+
+test('listTasks -- status sorting follows workflow order', async () => {
+  await withTasksDir(async (tasksDir) => {
+    await writeTask(tasksDir, 'TASK-0001', { status: 'done', priority: 'low', title: 'Done' });
+    await writeTask(tasksDir, 'TASK-0002', { status: 'blocked', priority: 'low', title: 'Blocked' });
+    await writeTask(tasksDir, 'TASK-0003', { status: 'new', priority: 'low', title: 'New' });
+
+    const workflowConfig: TaskConfig = {
+      ...config,
+      fields: [
+        { name: 'id', generated: '$ID' },
+        {
+          name: 'status',
+          options: [
+            { label: 'New', value: 'new' },
+            { label: 'Blocked', value: 'blocked' },
+            { label: 'Done', value: 'done' }
+          ],
+          default: 'new'
+        },
+        { name: 'priority', options: [{ label: 'Low', value: 'low' }], default: 'low' },
+        { name: 'title' }
+      ],
+      views: {
+        Workflow: {
+          filter: 'priority == low',
+          columns: ['id', 'status', 'title'],
+          sort: [{ field: 'status', direction: 'ascending' }]
+        }
+      }
+    };
+
+    const result = await listTrusted(tasksDir, workflowConfig, '', 'Workflow');
+    const lines = result.split('\n').filter((l) => l.trim());
+    assert.match(lines[1], /New/);
+    assert.match(lines[2], /Blocked/);
+    assert.match(lines[3], /Done/);
+  });
+});
+
+test('listTasks -- plain text fields still sort lexically', async () => {
+  await withTasksDir(async (tasksDir) => {
+    await writeTask(tasksDir, 'TASK-0001', { status: 'new', priority: 'low', title: 'Zeta' });
+    await writeTask(tasksDir, 'TASK-0002', { status: 'new', priority: 'low', title: 'Alpha' });
+
+    const lexicalConfig: TaskConfig = {
+      ...config,
+      views: {
+        Lexical: {
+          filter: 'status == new',
+          columns: ['id', 'title'],
+          sort: [{ field: 'title', direction: 'ascending' }]
+        }
+      }
+    };
+
+    const result = await listTrusted(tasksDir, lexicalConfig, '', 'Lexical');
+    const lines = result.split('\n').filter((l) => l.trim());
+    assert.match(lines[1], /Alpha/);
+    assert.match(lines[2], /Zeta/);
+  });
+});
+
+test('listTasks -- unknown view names throw', async () => {
+  await withTasksDir(async (tasksDir) => {
+    await writeTask(tasksDir, 'TASK-0001', { status: 'new', priority: 'low', title: 'Alpha' });
+    await assert.rejects(() => listTrusted(tasksDir, config, '', 'Missing View'), /View not found/);
   });
 });

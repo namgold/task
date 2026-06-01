@@ -198,7 +198,7 @@ test('buildNewTaskFrontmatter -- explicit field value overrides default', () => 
   assert.equal(fm.status, 'done');
 });
 
-test('buildNewTaskFrontmatter -- field with options preserves the exact value', () => {
+test('buildNewTaskFrontmatter -- field with options preserves exact value', () => {
   const fm = buildNewTaskFrontmatter(testConfig, { id: 'TASK-0001', title: 'Test', fields: { status: 'Done' } });
   assert.equal(fm.status, 'Done');
 });

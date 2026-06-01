@@ -86,6 +86,42 @@ export interface TaskConfig {
   views: Record<string, ViewConfig>;
 }
 
+export function resolveTasksDir(cwd: string, tasksDir: string): string {
+  const resolved = path.resolve(cwd, tasksDir);
+  const relative = path.relative(cwd, resolved);
+
+  if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+    return resolved;
+  }
+
+  throw new Error(`Configured tasks_dir must stay within the current workspace: ${tasksDir}`);
+}
+
+export async function resolveTasksDirWithinWorkspace(cwd: string, tasksDir: string): Promise<string> {
+  const resolved = resolveTasksDir(cwd, tasksDir);
+  const realWorkspace = await fs.realpath(cwd);
+  const realTarget = await realpathForPossiblyMissingPath(resolved);
+
+  if (isContainedPath(realWorkspace, realTarget)) {
+    return resolved;
+  }
+
+  throw new Error(`Configured tasks_dir must stay within the current workspace: ${tasksDir}`);
+}
+
+export async function resolveTasksDirForWrite(cwd: string, tasksDir: string): Promise<string> {
+  return resolveTasksDirWithinWorkspace(cwd, tasksDir);
+}
+
+export async function assertPathWithinDirectory(rootPath: string, targetPath: string, message: string): Promise<void> {
+  const realRoot = await fs.realpath(rootPath);
+  const realTarget = await fs.realpath(targetPath);
+
+  if (!isContainedPath(realRoot, realTarget)) {
+    throw new Error(message);
+  }
+}
+
 const configFileSchema = z
   .object({
     tasks: z
@@ -340,8 +376,9 @@ function buildFieldDocument(fields: FieldConfig[]): unknown[] {
       if ((field.options?.length ?? 0) > 0) {
         spec.options = field.options?.map((option) => option.label) ?? [];
       }
-      if (field.default !== undefined) {
-        spec.default = field.default;
+      const defaultValue = displaySelectableValue(field, field.default);
+      if (defaultValue !== undefined) {
+        spec.default = defaultValue;
       }
       return { [field.name]: spec };
     }
@@ -431,7 +468,11 @@ function normalizeSortSpec(value: unknown): SortSpec[] {
       const record = entry as Record<string, unknown>;
       const field = stringValue(record.field ?? record.Field);
       if (!field) {
-        return [];
+        const [singleField, singleDirection] = Object.entries(record)[0] ?? [];
+        if (!singleField) {
+          return [];
+        }
+        return [{ field: String(singleField).trim(), direction: normalizeDirection(singleDirection) }];
       }
       return [{ field, direction: normalizeDirection(record.direction ?? record.Direction) }];
     });
@@ -452,7 +493,13 @@ function normalizeSortSpec(value: unknown): SortSpec[] {
 
 function normalizeDirection(value: unknown): 'ascending' | 'descending' {
   const text = String(value ?? '').trim().toLowerCase();
-  return text === 'descending' || text === 'desc' ? 'descending' : 'ascending';
+  if (text === 'ascending' || text === 'asc') {
+    return 'ascending';
+  }
+  if (text === 'descending' || text === 'desc') {
+    return 'descending';
+  }
+  throw new Error(`Invalid sort direction: ${String(value)}`);
 }
 
 function buildViewDocument(views: Record<string, ViewConfig>): Array<Record<string, unknown>> {
@@ -479,4 +526,48 @@ function stripLegacyTaskrcKeys(document: Record<string, unknown>): Record<string
     result[key] = value;
   }
   return result;
+}
+
+function displaySelectableValue(field: FieldConfig, value: string | undefined): string | undefined {
+  if (value === undefined || !field.options?.length) {
+    return value;
+  }
+
+  const match = field.options.find((option) => option.value === value);
+  return match?.label ?? value;
+}
+
+async function realpathForPossiblyMissingPath(targetPath: string): Promise<string> {
+  try {
+    return await fs.realpath(targetPath);
+  } catch (error) {
+    if (!isFileNotFound(error)) {
+      throw error;
+    }
+  }
+
+  const parts = path.resolve(targetPath).split(path.sep).filter(Boolean);
+  let current = path.isAbsolute(targetPath) ? path.parse(targetPath).root : process.cwd();
+  let index = 0;
+
+  while (index < parts.length) {
+    const next = path.join(current, parts[index]);
+    try {
+      const realCurrent = await fs.realpath(next);
+      current = realCurrent;
+      index += 1;
+    } catch (error) {
+      if (!isFileNotFound(error)) {
+        throw error;
+      }
+      break;
+    }
+  }
+
+  return path.resolve(current, ...parts.slice(index));
+}
+
+function isContainedPath(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }

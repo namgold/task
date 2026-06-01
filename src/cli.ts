@@ -1,9 +1,18 @@
 #!/usr/bin/env node
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import path from 'node:path';
 import { Command } from 'commander';
 
-import { buildTaskrcDocument, loadConfig, readTaskrcDocument, taskConfigFromDocument, writeTaskrcDocument } from './config.js';
+import {
+  buildTaskrcDocument,
+  loadConfig,
+  readTaskrcDocument,
+  resolveTasksDir,
+  resolveTasksDirWithinWorkspace,
+  taskConfigFromDocument,
+  writeTaskrcDocument
+} from './config.js';
 import { createTask } from './new.js';
 import { listTasks } from './list.js';
 import { loadTasks, normalizeId } from './task.js';
@@ -38,6 +47,7 @@ program
   .option('--field <field=value>', 'additional task field', collectValue, [])
   .action(async (options) => {
     const config = await loadConfig();
+    const tasksDir = resolveTasksDir(process.cwd(), config.tasksDir);
     const extraFields = parseKeyValuePairs(options.field ?? []);
     const fields = {
       ...extraFields,
@@ -55,12 +65,12 @@ program
 
     validateConfiguredFields(config, fields);
 
-    const filePath = await createTask(config.tasksDir, config, {
+    const filePath = await createTask(tasksDir, config, {
       title: options.title,
       fields
     });
 
-    await writeText(process.stdout, `${filePath}\n`);
+    await writeText(process.stdout, `${formatWorkspaceRelativePath(process.cwd(), filePath)}\n`);
   });
 
 program
@@ -71,8 +81,10 @@ program
   .option('--view <view>', 'saved view name')
   .action(async (queryParts: string[], options: { view?: string }) => {
     const config = await loadConfig();
+    const cwd = process.cwd();
+    const tasksDir = await resolveTasksDirWithinWorkspace(cwd, config.tasksDir);
     const query = queryParts.join(' ').trim();
-    const output = await listTasks(config.tasksDir, config, query, options.view);
+    const output = await listTasks(tasksDir, config, query, options.view, { trusted: true });
     await writeText(process.stdout, `${output}\n`);
   });
 
@@ -88,12 +100,14 @@ viewCommand
 
     const name = nameParts.join(' ').trim();
     const config = await loadConfig();
+    const cwd = process.cwd();
+    const tasksDir = await resolveTasksDirWithinWorkspace(cwd, config.tasksDir);
 
     if (!Object.prototype.hasOwnProperty.call(config.views, name)) {
       throw new Error(`View not found: ${name}`);
     }
 
-    const output = await listTasks(config.tasksDir, config, '', name);
+    const output = await listTasks(tasksDir, config, '', name, { trusted: true });
     await writeText(process.stdout, `${output}\n`);
   });
 
@@ -179,7 +193,9 @@ program
   .argument('<id>', 'task id')
   .action(async (id: string) => {
     const config = await loadConfig();
-    const tasks = await loadTasks(config.tasksDir);
+    const cwd = process.cwd();
+    const tasksDir = await resolveTasksDirWithinWorkspace(cwd, config.tasksDir);
+    const tasks = await loadTasks(tasksDir, { trusted: true });
     const task = tasks.find((entry) => entry.id === normalizeId(id));
 
     if (!task) {
@@ -196,11 +212,12 @@ program
   .argument('[fields...]', 'updates in key=value form')
   .action(async (id: string, fields: string[]) => {
     const config = await loadConfig();
+    const tasksDir = resolveTasksDir(process.cwd(), config.tasksDir);
     const updates = parseKeyValuePairs(fields);
     validateConfiguredFields(config, updates);
 
-    const filePath = await updateTask(config.tasksDir, config, normalizeId(id), updates);
-    await writeText(process.stdout, `${filePath}\n`);
+    const filePath = await updateTask(tasksDir, config, normalizeId(id), updates);
+    await writeText(process.stdout, `${formatWorkspaceRelativePath(process.cwd(), filePath)}\n`);
   });
 
 program
@@ -208,7 +225,9 @@ program
   .description('Validate all tasks')
   .action(async () => {
     const config = await loadConfig();
-    const issues = await validateTasks(config.tasksDir, config);
+    const cwd = process.cwd();
+    const tasksDir = await resolveTasksDirWithinWorkspace(cwd, config.tasksDir);
+    const issues = await validateTasks(tasksDir, config, { trusted: true });
 
     if (issues.length > 0) {
       for (const issue of issues) {
@@ -234,7 +253,8 @@ program
         await writeText(process.stdout, `${buildFishCompletionScript()}\n`);
         return;
       case 'zsh':
-        throw new Error(`Unsupported shell: ${shell}`);
+        await writeText(process.stdout, `${buildZshCompletionScript()}\n`);
+        return;
       default:
         throw new Error(`Unsupported shell: ${shell}`);
     }
@@ -246,8 +266,10 @@ program
   .argument('<query...>', 'search query')
   .action(async (queryParts: string[]) => {
     const config = await loadConfig();
+    const cwd = process.cwd();
+    const tasksDir = await resolveTasksDirWithinWorkspace(cwd, config.tasksDir);
     const query = queryParts.join(' ').trim().toLowerCase();
-    const tasks = await loadTasks(config.tasksDir);
+    const tasks = await loadTasks(tasksDir, { trusted: true });
 
     for (const task of tasks) {
       const haystack = [task.id, task.title, ...Object.entries(task.frontmatter).map(([key, value]) => `${key}:${stringifySearchValue(value)}`), task.body]
@@ -373,6 +395,11 @@ function formatSort(sort: { field: string; direction: 'ascending' | 'descending'
     return '';
   }
   return sort.map((item) => `${item.field}:${item.direction}`).join(', ');
+}
+
+function formatWorkspaceRelativePath(cwd: string, filePath: string): string {
+  const relative = path.relative(cwd, filePath);
+  return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? relative : filePath;
 }
 
 async function confirm(prompt: string): Promise<boolean> {

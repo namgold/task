@@ -1,16 +1,30 @@
 import path from 'node:path';
 
 import type { FieldConfig, TaskConfig } from './config.js';
-import { discoverTaskFiles, readTaskFile } from './task.js';
+import { discoverTaskFiles, readTaskFile, type TaskPathOptions } from './task.js';
 
 export interface ValidationIssue {
   filePath: string;
   message: string;
 }
 
-export async function validateTasks(tasksDir: string, config: TaskConfig): Promise<ValidationIssue[]> {
+export async function validateTasks(
+  tasksDir: string,
+  config: TaskConfig,
+  options: TaskPathOptions = {}
+): Promise<ValidationIssue[]> {
   const issues: ValidationIssue[] = [];
-  const files = await discoverTaskFiles(tasksDir);
+  let files: string[];
+  try {
+    files = await discoverTaskFiles(tasksDir, options);
+  } catch (error) {
+    return [
+      {
+        filePath: tasksDir,
+        message: error instanceof Error ? error.message : String(error)
+      }
+    ];
+  }
   const ids = new Map<string, string>();
 
   for (const filePath of files) {
@@ -26,7 +40,7 @@ export async function validateTasks(tasksDir: string, config: TaskConfig): Promi
     }
 
     const missingGeneratedFields = config.fields
-      .filter((field) => field.generated && !(field.name in task.frontmatter))
+      .filter((field) => field.generated && !hasNonEmptyString(task.frontmatter[field.name]))
       .map((field) => field.name);
     if (missingGeneratedFields.length > 0) {
       issues.push({ filePath, message: `Missing required fields: ${missingGeneratedFields.join(', ')}` });
@@ -36,17 +50,18 @@ export async function validateTasks(tasksDir: string, config: TaskConfig): Promi
       issues.push({ filePath, message: 'Markdown body is empty' });
     }
 
-    if (!task.fileName.startsWith(`${task.id}`) || !task.fileName.endsWith('.md')) {
+    if (!isValidTaskId(task.id) || !task.fileName.toUpperCase().startsWith(`${normalizeTaskId(task.id)}`) || !task.fileName.endsWith('.md')) {
       issues.push({ filePath, message: 'Filename does not roughly match task ID' });
     }
 
-    if (task.id && ids.has(task.id)) {
+    const normalizedId = normalizeTaskId(task.id);
+    if (isValidTaskId(task.id) && ids.has(normalizedId)) {
       issues.push({
         filePath,
-        message: `Duplicate task ID ${task.id} also used by ${path.basename(ids.get(task.id) ?? '')}`
+        message: `Duplicate task ID ${normalizedId} also used by ${path.basename(ids.get(normalizedId) ?? '')}`
       });
-    } else if (task.id) {
-      ids.set(task.id, filePath);
+    } else if (isValidTaskId(task.id)) {
+      ids.set(normalizedId, filePath);
     }
 
     for (const field of config.fields) {
@@ -74,4 +89,16 @@ function validateSelectableField(
   if (!field.options.some((option) => option.value === value)) {
     issues.push({ filePath, message: `Invalid ${field.name}: ${value}` });
   }
+}
+
+function hasNonEmptyString(value: unknown): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isValidTaskId(value: string): boolean {
+  return /^TASK-\d{4,}$/i.test(value.trim());
+}
+
+function normalizeTaskId(value: string): string {
+  return value.trim().toUpperCase();
 }

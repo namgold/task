@@ -10,12 +10,21 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
+import matter from 'gray-matter';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 // --- CLI resolution ---
 
 function resolveCli() {
+  if (process.env.TASK_CLI_PATH) {
+    const cliPath = path.resolve(process.env.TASK_CLI_PATH);
+    if (cliPath.endsWith('.ts')) {
+      return { cmd: path.join(projectRoot, 'node_modules', '.bin', 'tsx'), args: [cliPath] };
+    }
+    return { cmd: process.execPath, args: [cliPath] };
+  }
+
   const distCli = path.join(projectRoot, 'dist', 'cli.js');
   if (fs.existsSync(distCli)) {
     return { cmd: process.execPath, args: [distCli] };
@@ -33,6 +42,17 @@ function runTask(taskArgs, { allowNonZero = false } = {}) {
   return result.status !== 0
     ? (result.stderr ?? '').trim()
     : (result.stdout ?? '').trim();
+}
+
+function readTaskIdFromFile(taskPath) {
+  const resolvedPath = path.isAbsolute(taskPath) ? taskPath : path.resolve(process.cwd(), taskPath);
+  const raw = fs.readFileSync(resolvedPath, 'utf8');
+  const parsed = matter(raw);
+  const id = parsed.data?.id === undefined || parsed.data.id === null ? '' : String(parsed.data.id).trim();
+  if (!id) {
+    throw new Error(`Could not read task id from ${taskPath}`);
+  }
+  return id;
 }
 
 // --- MCP stdio transport (newline-delimited JSON) ---
@@ -160,7 +180,14 @@ function callTool(name, input = {}) {
       for (const flag of ['type', 'priority', 'status', 'assignee', 'description', 'owner', 'branch', 'pr', 'summary']) {
         if (input[flag]) args.push(`--${flag}`, input[flag]);
       }
-      return runTask(args);
+      const pathText = runTask(args);
+      return {
+        text: pathText,
+        structuredContent: {
+          path: pathText,
+          id: readTaskIdFromFile(pathText)
+        }
+      };
     }
 
     case 'task.list': {
@@ -229,8 +256,20 @@ function handleMessage(msg) {
 
       case 'tools/call': {
         const { name, arguments: args = {} } = params ?? {};
-        const text = callTool(name, args);
-        send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text }] } });
+        const result = callTool(name, args);
+        if (typeof result === 'string') {
+          send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: result }] } });
+          break;
+        }
+
+        send({
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: result.text }],
+            structuredContent: result.structuredContent
+          }
+        });
         break;
       }
 

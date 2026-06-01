@@ -32,6 +32,10 @@ function writeTaskFile(tasksDir: string, name: string, content: string): Promise
   return writeFile(path.join(tasksDir, name), content, 'utf8');
 }
 
+function validateTrusted(tasksDir: string, taskConfig: TaskConfig) {
+  return validateTasks(tasksDir, taskConfig, { trusted: true });
+}
+
 test('validateTasks -- valid task returns no issues', async () => {
   await withTasksDir(async (tasksDir) => {
     await writeTaskFile(
@@ -39,14 +43,14 @@ test('validateTasks -- valid task returns no issues', async () => {
       'TASK-0001-my-task.md',
       '---\nid: TASK-0001\nstatus: new\ntitle: My task\n---\n# Body\n\nDetails.\n'
     );
-    const issues = await validateTasks(tasksDir, minimalConfig);
+    const issues = await validateTrusted(tasksDir, minimalConfig);
     assert.equal(issues.length, 0);
   });
 });
 
 test('validateTasks -- no task files returns empty issues', async () => {
   await withTasksDir(async (tasksDir) => {
-    const issues = await validateTasks(tasksDir, minimalConfig);
+    const issues = await validateTrusted(tasksDir, minimalConfig);
     assert.equal(issues.length, 0);
   });
 });
@@ -54,7 +58,7 @@ test('validateTasks -- no task files returns empty issues', async () => {
 test('validateTasks -- empty body produces issue', async () => {
   await withTasksDir(async (tasksDir) => {
     await writeTaskFile(tasksDir, 'TASK-0001-empty.md', '---\nid: TASK-0001\nstatus: new\ntitle: Empty\n---\n');
-    const issues = await validateTasks(tasksDir, minimalConfig);
+    const issues = await validateTrusted(tasksDir, minimalConfig);
     assert.ok(issues.some((issue) => issue.message.includes('Markdown body is empty')));
   });
 });
@@ -67,7 +71,7 @@ test('validateTasks -- filename mismatch produces issue', async () => {
       'TASK-0002-wrong-name.md',
       '---\nid: TASK-0001\nstatus: new\ntitle: Wrong\n---\n# Body\n\nText.\n'
     );
-    const issues = await validateTasks(tasksDir, minimalConfig);
+    const issues = await validateTrusted(tasksDir, minimalConfig);
     assert.ok(issues.some((issue) => issue.message.includes('Filename does not roughly match task ID')));
   });
 });
@@ -80,8 +84,22 @@ test('validateTasks -- missing generated field produces issue', async () => {
       'TASK-0001-no-id.md',
       '---\nstatus: new\ntitle: No ID\n---\n# Body\n\nText.\n'
     );
-    const issues = await validateTasks(tasksDir, minimalConfig);
+    const issues = await validateTrusted(tasksDir, minimalConfig);
     assert.ok(issues.some((issue) => issue.message.includes('Missing required fields')));
+  });
+});
+
+test('validateTasks -- empty id is rejected even if the filename exists', async () => {
+  await withTasksDir(async (tasksDir) => {
+    await writeTaskFile(
+      tasksDir,
+      'TASK-0001-empty-id.md',
+      '---\nid:\nstatus: new\ntitle: Empty ID\n---\n# Body\n\nText.\n'
+    );
+
+    const issues = await validateTrusted(tasksDir, minimalConfig);
+    assert.ok(issues.some((issue) => issue.message.includes('Missing required fields: id')));
+    assert.ok(issues.some((issue) => issue.message.includes('Filename does not roughly match task ID')));
   });
 });
 
@@ -89,7 +107,7 @@ test('validateTasks -- duplicate ids produce issue', async () => {
   await withTasksDir(async (tasksDir) => {
     await writeTaskFile(tasksDir, 'TASK-0001-alpha.md', '---\nid: TASK-0001\nstatus: new\ntitle: Alpha\n---\n# Body\n\nText.\n');
     await writeTaskFile(tasksDir, 'TASK-0001-beta.md', '---\nid: TASK-0001\nstatus: new\ntitle: Beta\n---\n# Body\n\nText.\n');
-    const issues = await validateTasks(tasksDir, minimalConfig);
+    const issues = await validateTrusted(tasksDir, minimalConfig);
     assert.ok(issues.some((issue) => issue.message.includes('Duplicate task ID')));
   });
 });
@@ -101,7 +119,32 @@ test('validateTasks -- invalid selectable field produces issue', async () => {
       'TASK-0001-bad.md',
       '---\nid: TASK-0001\nstatus: notvalid\ntitle: Bad\n---\n# Body\n\nText.\n'
     );
-    const issues = await validateTasks(tasksDir, minimalConfig);
+    const issues = await validateTrusted(tasksDir, minimalConfig);
     assert.ok(issues.some((issue) => issue.message.includes('Invalid status')));
+  });
+});
+
+test('validateTasks -- rejects normalized aliases when exact options are configured', async () => {
+  await withTasksDir(async (tasksDir) => {
+    const exactConfig: TaskConfig = {
+      ...minimalConfig,
+      fields: [
+        { name: 'id', generated: '$ID' },
+        {
+          name: 'status',
+          options: [{ label: '2. Pending Review', value: '2. Pending Review' }],
+          default: '2. Pending Review'
+        },
+        { name: 'title' }
+      ]
+    };
+    await writeTaskFile(
+      tasksDir,
+      'TASK-0001-bad-alias.md',
+      '---\nid: TASK-0001\nstatus: pending_review\ntitle: Bad Alias\n---\n# Body\n\nText.\n'
+    );
+
+    const issues = await validateTrusted(tasksDir, exactConfig);
+    assert.ok(issues.some((issue) => issue.message.includes('Invalid status: pending_review')));
   });
 });

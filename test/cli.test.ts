@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -49,6 +49,44 @@ test('new -- writes custom weird fields from config', { concurrency: false }, as
     const raw = await readFile(path.join(cwd, filePath), 'utf8');
     assert.match(raw, /custom field: alpha/);
     assert.match(raw, /title: Weird field task/);
+  });
+});
+
+test('new and update store exact selectable values from taskrc', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    await writeFile(
+      path.join(cwd, '.taskrc.yml'),
+      [
+        'tasks_dir: .tasks',
+        'fields:',
+        '  - id: $ID',
+        '  - status:',
+        '      options:',
+        '        - 2. Pending Review',
+        '        - 3. Pending Review',
+        '      default: 2. Pending Review',
+        '  - title',
+        '  - updated_at: $UPDATED_AT',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    const createResult = await runCli(cwd, ['new', '--title', 'Exact selectable', '--status', '2. Pending Review']);
+    assert.equal(createResult.status, 0, createResult.stderr);
+
+    const filePath = path.join(cwd, createResult.stdout.trim());
+    let raw = await readFile(filePath, 'utf8');
+    assert.match(raw, /status: 2\. Pending Review/);
+
+    const aliasResult = await runCli(cwd, ['update', 'TASK-0001', 'status=pending_review']);
+    assert.equal(aliasResult.status, 1);
+    assert.match(aliasResult.stderr, /Invalid status: pending_review/);
+
+    const updateResult = await runCli(cwd, ['update', 'TASK-0001', 'status=3. Pending Review']);
+    assert.equal(updateResult.status, 0, updateResult.stderr);
+    raw = await readFile(filePath, 'utf8');
+    assert.match(raw, /status: 3\. Pending Review/);
   });
 });
 
@@ -563,6 +601,117 @@ test('new -- invalid type value exits with code 1', { concurrency: false }, asyn
   });
 });
 
+test('new and update fail when tasks_dir escapes the workspace', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    await writeFile(
+      path.join(cwd, '.taskrc.yml'),
+      ['tasks_dir: ../outside', ''].join('\n'),
+      'utf8'
+    );
+
+    const newResult = await runCli(cwd, ['new', '--title', 'Outside task']);
+    assert.equal(newResult.status, 1);
+    assert.match(newResult.stderr, /must stay within the current workspace/);
+
+    const updateResult = await runCli(cwd, ['update', 'TASK-0001', 'status=done']);
+    assert.equal(updateResult.status, 1);
+    assert.match(updateResult.stderr, /must stay within the current workspace/);
+  });
+});
+
+test('new and update fail when .tasks is a symlink outside the workspace', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'task-outside-'));
+    try {
+      await symlink(outside, path.join(cwd, '.tasks'));
+
+      const newResult = await runCli(cwd, ['new', '--title', 'Symlink escape']);
+      assert.equal(newResult.status, 1);
+      assert.match(newResult.stderr, /must stay within the current workspace/);
+
+      await writeFile(
+        path.join(outside, 'TASK-0001-alpha.md'),
+        '---\nid: TASK-0001\ntitle: Alpha\nstatus: new\n---\n# Body\n',
+        'utf8'
+      );
+
+      const updateResult = await runCli(cwd, ['update', 'TASK-0001', 'status=done']);
+      assert.equal(updateResult.status, 1);
+      assert.match(updateResult.stderr, /must stay within the current workspace/);
+
+      const raw = await readFile(path.join(outside, 'TASK-0001-alpha.md'), 'utf8');
+      assert.match(raw, /status: new/);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test('read commands fail when .tasks is a symlink outside the workspace', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'task-outside-'));
+    try {
+      await writeFile(
+        path.join(outside, 'TASK-0001-outside.md'),
+        '---\nid: TASK-0001\ntitle: Outside Secret\nstatus: new\n---\n# Body\n\nExternal data.\n',
+        'utf8'
+      );
+      await symlink(outside, path.join(cwd, '.tasks'));
+
+      for (const args of [
+        ['list'],
+        ['show', 'TASK-0001'],
+        ['search', 'Outside Secret'],
+        ['validate']
+      ]) {
+        const result = await runCli(cwd, args);
+        assert.equal(result.status, 1, `${args.join(' ')} should fail`);
+        assert.match(result.stderr, /must stay within the current workspace/);
+        assert.doesNotMatch(result.stdout, /Outside Secret/);
+        assert.doesNotMatch(result.stdout, /External data/);
+      }
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test('update fails when a task file is a symlink outside the workspace', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    const outside = path.join(os.tmpdir(), `task-outside-${Date.now()}-${Math.random()}.md`);
+    try {
+      await mkdir(path.join(cwd, '.tasks'), { recursive: true });
+      await writeFile(outside, '---\nid: TASK-0001\ntitle: Outside\nstatus: new\n---\n# Body\n', 'utf8');
+      await symlink(outside, path.join(cwd, '.tasks', 'TASK-0001-link.md'));
+
+      const result = await runCli(cwd, ['update', 'TASK-0001', 'status=done']);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /Task file must stay within the configured tasks_dir/);
+
+      const raw = await readFile(outside, 'utf8');
+      assert.match(raw, /status: new/);
+      assert.doesNotMatch(raw, /status: done/);
+    } finally {
+      await rm(outside, { force: true });
+    }
+  });
+});
+
+test('new allows .tasks symlinked inside the workspace', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    const actualTasksDir = path.join(cwd, 'task-files');
+    await mkdir(actualTasksDir, { recursive: true });
+    await symlink(actualTasksDir, path.join(cwd, '.tasks'));
+
+    const result = await runCli(cwd, ['new', '--title', 'Internal symlink']);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /TASK-0001-internal-symlink\.md/);
+
+    const raw = await readFile(path.join(cwd, result.stdout.trim()), 'utf8');
+    assert.match(raw, /id: TASK-0001/);
+  });
+});
+
 test('list -- filter expression shows only matching tasks', { concurrency: false }, async () => {
   await withWorkspace(async (cwd) => {
     await writeTask(cwd, { id: 'TASK-0001', title: 'Task A', status: 'new', created_at: '', updated_at: '' } as never);
@@ -590,6 +739,14 @@ test('list -- --view flag works same as task view <name>', { concurrency: false 
     const result = await runCli(cwd, ['list', '--view', 'Open Tasks']);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /View flag summary/);
+  });
+});
+
+test('list -- unknown view exits with code 1', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    const result = await runCli(cwd, ['list', '--view', 'Missing View']);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /View not found/);
   });
 });
 
@@ -768,11 +925,12 @@ test('completion -- fish generates script', { concurrency: false }, async () => 
   });
 });
 
-test('completion -- unsupported shell exits with code 1', { concurrency: false }, async () => {
+test('completion -- zsh generates script', { concurrency: false }, async () => {
   await withWorkspace(async (cwd) => {
     const result = await runCli(cwd, ['completion', 'zsh']);
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /Unsupported shell/);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /#compdef task/);
+    assert.match(result.stdout, /compdef _task task/);
   });
 });
 

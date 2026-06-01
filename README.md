@@ -12,9 +12,9 @@ Tasks live under `.tasks/` by default. Each task is one markdown file with YAML 
 ---
 id: TASK-0001
 title: Example task
-type: feature
-status: new
-priority: medium
+type: Demo Type
+status: Demo Todo
+priority: Demo Medium
 assignee:
 owner:
 branch:
@@ -44,32 +44,22 @@ fields:
   - id: $ID
   - status:
       options:
-        - New
-        - Brainstorming
-        - Pending Review
-        - Need Revision
-        - Approved
-        - Rejected
-        - Implementing
-        - Done
-        - Blocked
-      default: new
+        - Demo Todo
+        - Demo In Review
+        - Demo Done
+      default: Demo Todo
   - priority:
-      default: medium
+      default: Demo Medium
       options:
-        - Low
-        - Medium
-        - High
-        - Critical
+        - Demo Low
+        - Demo Medium
+        - Demo High
   - type:
       options:
-        - Bug
-        - Feature
-        - Enhancement
-        - UX
-        - Chore
-        - Idea
-      default: idea
+        - Demo Bug
+        - Demo Feature
+        - Demo Chore
+      default: Demo Feature
   - assignee
   - title:
       default: Idea Title
@@ -80,10 +70,10 @@ fields:
   - summary
 views:
   - Open Tasks:
-      filter: "(status != done && status != blocked && status != rejected)"
+      filter: 'status != "Demo Done"'
       columns: status, priority, summary, description
-  - High priority:
-      filter: "(status != done && status != blocked && status != rejected && (priority == high || priority == critical))"
+  - High Priority Demo:
+      filter: '(status != "Demo Done" && priority == "Demo High")'
       sort:
         - priority: descending
         - status: ascending
@@ -92,21 +82,21 @@ views:
 ## Commands
 
 ```sh
-task new --title "Fix websocket reconnect" --type bug --priority high
+task new --title "Demo task title" --type "Demo Feature" --priority "Demo High" --status "Demo Todo"
 task list
-task list status=new
-task ls "status != done && status != rejected"
-task ls --view not-done
-task update TASK-0001 status=approved assignee=nam
+task list 'status == "Demo Todo"'
+task ls 'status != "Demo Done"'
+task ls --view demo-open
+task update TASK-0001 status="Demo In Review" assignee=demo-user
 task show TASK-0001
-task search websocket
+task search demo
 task validate
-task view create not-done "status != done && status != rejected" --column status --column priority --sort priority:ascending --sort status:ascending
+task view create demo-open 'status != "Demo Done"' --column status --column priority --sort priority:ascending --sort status:ascending
 task view ls
-task view rm not-done
+task view rm demo-open
 ```
 
-Complex `task ls` expressions that use parentheses or spaces should be quoted by the shell, as shown above.
+Selectable values are exact strings from `.taskrc.yml`. Quote values that contain spaces or shell-sensitive characters, as shown above.
 
 ## Shell completion
 

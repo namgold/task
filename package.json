@@ -19,7 +19,7 @@
     "postinstall": "node ./dist/install-completions.js",
     "prepare": "npm run build",
     "prepack": "npm run build",
-    "test": "node --import tsx --test test/cli.test.ts test/completion.test.ts test/config-query.test.ts test/edge-cases.test.ts test/table.test.ts test/task.test.ts test/validate.test.ts test/list.test.ts",
+    "test": "node --import tsx --test test/cli.test.ts test/completion.test.ts test/config-query.test.ts test/edge-cases.test.ts test/mcp.test.ts test/table.test.ts test/task.test.ts test/validate.test.ts test/list.test.ts",
     "validate": "node --import tsx src/cli.ts validate"
   },
   "dependencies": {

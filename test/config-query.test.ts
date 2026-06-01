@@ -7,7 +7,9 @@ import { test } from 'node:test';
 import {
   buildTaskrcDocument,
   defaultTaskConfig,
+  loadConfig,
   readTaskrcDocument,
+  resolveTasksDir,
   taskConfigFromDocument,
   writeTaskrcDocument
 } from '../src/config.js';
@@ -59,6 +61,29 @@ test('taskConfigFromDocument normalizes legacy and mixed config shapes', () => {
   });
 });
 
+test('taskConfigFromDocument preserves distinct selectable options exactly', () => {
+  const config = taskConfigFromDocument({
+    fields: [
+      { id: '$ID' },
+      {
+        status: {
+          options: ['2. Pending Review', '3. Pending Review'],
+          default: '2. Pending Review'
+        }
+      }
+    ]
+  });
+
+  assert.deepEqual(config.fields[1], {
+    name: 'status',
+    options: [
+      { label: '2. Pending Review', value: '2. Pending Review' },
+      { label: '3. Pending Review', value: '3. Pending Review' }
+    ],
+    default: '2. Pending Review'
+  });
+});
+
 test('buildTaskrcDocument preserves extra keys and round-trips view settings', () => {
   const document = buildTaskrcDocument(
     {
@@ -89,13 +114,13 @@ test('buildTaskrcDocument preserves extra keys and round-trips view settings', (
     {
       status: {
         options: ['New', 'Brainstorming', 'Pending Review', 'Need Revision', 'Approved', 'Rejected', 'Implementing', 'Done', 'Blocked'],
-        default: 'new'
+        default: 'New'
       }
     },
     {
       priority: {
         options: ['Low', 'Medium', 'High', 'Critical'],
-        default: 'medium'
+        default: 'Medium'
       }
     }
   ]);
@@ -147,6 +172,24 @@ test('matchesTaskQuery treats implicit AND and arrays consistently', () => {
   assert.equal(matchesTaskQuery(task, 'tags == "alpha, beta"'), true);
   assert.equal(matchesTaskQuery(task, 'tags != gamma'), true);
   assert.equal(matchesTaskQuery(task, 'priority == low'), false);
+});
+
+test('matchesTaskQuery uses exact values for selectable-style fields', () => {
+  const task = {
+    filePath: '/tmp/TASK-0001.md',
+    fileName: 'TASK-0001.md',
+    raw: '',
+    frontmatter: {
+      status: '2. Pending Review'
+    },
+    body: '',
+    id: 'TASK-0001',
+    title: 'Review task'
+  } as TaskFile;
+
+  assert.equal(matchesTaskQuery(task, 'status == "2. Pending Review"'), true);
+  assert.equal(matchesTaskQuery(task, 'status == pending_review'), false);
+  assert.equal(matchesTaskQuery(task, 'status == "3. Pending Review"'), false);
 });
 
 test('matchesTaskQuery -- single = operator matches like ==', () => {
@@ -256,6 +299,33 @@ test('readTaskrcDocument -- rejects malformed YAML', async () => {
   try {
     await writeFile(path.join(dir, '.taskrc.yml'), 'fields:\n  - id: $ID\n    title\n', 'utf8');
     await assert.rejects(() => readTaskrcDocument(dir));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('resolveTasksDir rejects paths that escape the workspace', () => {
+  assert.equal(resolveTasksDir('/repo', '.tasks'), '/repo/.tasks');
+  assert.throws(() => resolveTasksDir('/repo', '../outside'), /must stay within the current workspace/);
+});
+
+test('loadConfig rejects malformed sort directions in .taskrc.yml', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'task-config-'));
+  try {
+    await writeFile(
+      path.join(dir, '.taskrc.yml'),
+      [
+        'views:',
+        '  - Bad:',
+        '      filter: status == new',
+        '      sort:',
+        '        - priority: sideways',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    await assert.rejects(() => loadConfig(dir), /Invalid sort direction/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
