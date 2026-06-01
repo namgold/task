@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { buildTaskrcDocument, defaultTaskConfig, taskConfigFromDocument, writeTaskrcDocument } from '../src/config.js';
+import {
+  buildTaskrcDocument,
+  defaultTaskConfig,
+  readTaskrcDocument,
+  taskConfigFromDocument,
+  writeTaskrcDocument
+} from '../src/config.js';
 import { matchesTaskQuery, parseTaskQuery } from '../src/query.js';
 import type { TaskFile } from '../src/task.js';
 
@@ -211,6 +217,28 @@ test('taskConfigFromDocument -- empty document falls back to default fields and 
   assert.deepEqual(config.views, {});
 });
 
+test('taskConfigFromDocument -- preserves weird and duplicate field entries', () => {
+  const config = taskConfigFromDocument({
+    fields: [
+      'custom-field',
+      { 'weird field': { default: 'value' } },
+      { id: '$ID' },
+      { id: '$ID' },
+      { title: { default: 'Override title' } }
+    ]
+  });
+
+  assert.deepEqual(config.fields.map((field) => field.name), [
+    'custom-field',
+    'weird field',
+    'id',
+    'id',
+    'title'
+  ]);
+  assert.equal(config.fields[2].generated, '$ID');
+  assert.equal(config.fields[3].generated, '$ID');
+});
+
 test('writeTaskrcDocument -- writes YAML file to the given directory', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'task-config-'));
   try {
@@ -218,6 +246,62 @@ test('writeTaskrcDocument -- writes YAML file to the given directory', async () 
     const content = await readFile(path.join(dir, '.taskrc.yml'), 'utf8');
     assert.match(content, /tasks_dir: .tasks/);
     assert.match(content, /custom_key: value/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('readTaskrcDocument -- rejects malformed YAML', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'task-config-'));
+  try {
+    await writeFile(path.join(dir, '.taskrc.yml'), 'fields:\n  - id: $ID\n    title\n', 'utf8');
+    await assert.rejects(() => readTaskrcDocument(dir));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('readTaskrcDocument -- rejects invalid field entry shape', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'task-config-'));
+  try {
+    await writeFile(
+      path.join(dir, '.taskrc.yml'),
+      [
+        'fields:',
+        '  - id: $ID',
+        '    title: $ID',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    await assert.rejects(
+      () => readTaskrcDocument(dir),
+      /Invalid \.taskrc\.yml: field entries must contain exactly one field name/
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('readTaskrcDocument -- rejects invalid view entry shape', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'task-config-'));
+  try {
+    await writeFile(
+      path.join(dir, '.taskrc.yml'),
+      [
+        'views:',
+        '  - Alpha: { filter: "status == new" }',
+        '    Beta: { filter: "status == done" }',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    await assert.rejects(
+      () => readTaskrcDocument(dir),
+      /Invalid \.taskrc\.yml: view entries must contain exactly one view name/
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

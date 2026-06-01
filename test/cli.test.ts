@@ -26,6 +26,32 @@ test('new creates a task file with defaults', { concurrency: false }, async () =
   });
 });
 
+test('new -- writes custom weird fields from config', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    await writeFile(
+      path.join(cwd, '.taskrc.yml'),
+      [
+        'tasks_dir: .tasks',
+        'fields:',
+        '  - id: $ID',
+        '  - title',
+        '  - custom field:',
+        '      default: seeded',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    const result = await runCli(cwd, ['new', '--title', 'Weird field task', '--field', 'custom field=alpha']);
+
+    assert.equal(result.status, 0, result.stderr);
+    const filePath = result.stdout.trim();
+    const raw = await readFile(path.join(cwd, filePath), 'utf8');
+    assert.match(raw, /custom field: alpha/);
+    assert.match(raw, /title: Weird field task/);
+  });
+});
+
 test('list and view render saved tables', { concurrency: false }, async () => {
   await withWorkspace(async (cwd) => {
     await writeTask(cwd, {
@@ -610,6 +636,26 @@ test('update -- invalid status value exits with code 1', { concurrency: false },
     const result = await runCli(cwd, ['update', 'TASK-0001', 'status=notvalid']);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /Invalid status/);
+  });
+});
+
+test('list -- malformed taskrc exits with code 1', { concurrency: false }, async () => {
+  await withWorkspace(async (cwd) => {
+    await writeFile(
+      path.join(cwd, '.taskrc.yml'),
+      [
+        'fields:',
+        '  - id: $ID',
+        '    title:',
+        '      default: broken',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+
+    const result = await runCli(cwd, ['list']);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Invalid \.taskrc\.yml/);
   });
 });
 

@@ -208,6 +208,22 @@ test('buildNewTaskFrontmatter -- field without default or explicit value gets em
   assert.equal(fm.summary, '');
 });
 
+test('buildNewTaskFrontmatter -- duplicate field names use the last definition', () => {
+  const config: TaskConfig = {
+    tasksDir: '.tasks',
+    fields: [
+      { name: 'status', default: 'new' },
+      { name: 'custom field', default: 'alpha' },
+      { name: 'status', default: 'done' }
+    ],
+    views: {}
+  };
+
+  const fm = buildNewTaskFrontmatter(config, { id: 'TASK-0001', title: 'Test' });
+  assert.equal(fm.status, 'done');
+  assert.equal(fm['custom field'], 'alpha');
+});
+
 // --- stringifyTaskFile ---
 
 test('stringifyTaskFile -- wraps frontmatter in YAML delimiters with body', () => {
@@ -229,6 +245,20 @@ test('stringifyTaskFile -- preserves body verbatim', () => {
   const body = '\n# Problem\n\nSome details here.\n';
   const result = stringifyTaskFile({ frontmatter: { id: 'TASK-0001' }, body });
   assert.ok(result.endsWith(body));
+});
+
+test('stringifyTaskFile -- preserves unusual frontmatter keys', () => {
+  const result = stringifyTaskFile({
+    frontmatter: {
+      id: 'TASK-0001',
+      'custom field': 'alpha',
+      'system-schema': 'beta'
+    },
+    body: ''
+  });
+
+  assert.match(result, /custom field: alpha/);
+  assert.match(result, /system-schema: beta/);
 });
 
 // --- flattenTaskSearchText ---
